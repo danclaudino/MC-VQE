@@ -134,7 +134,7 @@ cis_energies, cis_states = np.linalg.eigh(cis_matrix)
 # compute gate angles from CIS state vectors Eq. 60 of derivative preprint
 # rows are angles and columns states
 state_gate_angles = np.zeros([n_chromo, n_chromo + 1])
-for state in range(1):
+for state in range(n_chromo + 1):
     for angle in range(n_chromo):
         state_gate_angles[angle, state] = np.arccos(cis_states[angle, state]/np.sqrt(np.sum(cis_states[angle:, state]**2)))
     state_gate_angles[-1, state] *= np.sign(cis_states[-1, state])

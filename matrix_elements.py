@@ -24,7 +24,7 @@ es_dipole = np.zeros([n_chromo, 3]) # excited state dipole moment
 t_dipole = np.zeros([n_chromo, 3]) # transition dipole moment
 for outfile in range(n_chromo):
 
-    filename = '../packet/classical/' + str(outfile + 1) + '/out'
+    filename = './data/' + str(outfile + 1) + '/out'
     with open(filename, 'r') as f:
         content = f.readlines()
 

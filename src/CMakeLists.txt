@@ -38,7 +38,7 @@ usfunctionembedresources(TARGET
                          FILES
                          manifest.json)
 
-target_include_directories(${LIBRARY_NAME} PUBLIC . ${CMAKE_SOURCE_DIR}/tpls/eigen ${XACC_DIR})
+target_include_directories(${LIBRARY_NAME} PUBLIC . ${XACC_DIR}/include/eigen ${XACC_DIR})
 
 target_link_libraries(${LIBRARY_NAME} PUBLIC xacc::xacc xacc::quantum_gate xacc::fermion xacc::pauli)
 

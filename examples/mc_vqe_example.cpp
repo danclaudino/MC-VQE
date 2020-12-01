@@ -210,7 +210,6 @@ Transition dipole moment: 1.5656,2.8158,-0.0976
        ss << "Ground state dipole moment: " << rand() << "," << rand() << "," << rand() << "\n";
        ss << "Excited state dipole moment: " << rand() << "," << rand() << "," << rand() << "\n";
        ss << "Transition dipole moment: " << rand() << "," << rand() << "," << rand() << "\n";
-       ss << "\n";
     }
 
   datafile << ss.str();

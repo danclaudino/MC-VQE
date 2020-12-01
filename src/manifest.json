@@ -1,0 +1,6 @@
+{
+  "bundle.symbolic_name" : "mc_vqe",
+  "bundle.activator" : true,
+  "bundle.name" : "XACC MC-VQE Algorithm",
+  "bundle.description" : ""
+}

@@ -8,9 +8,11 @@ int main(int argc, char **argv) {
   xacc::Initialize(argc, argv);
 
   std::vector<std::string> arguments(argv + 1, argv + argc);
-  int n_virt_qpus = 1, exatnLogLevel = 2, mcvqeLogLevel = 1, n_chromophores = 4,
+  int n_virt_qpus = 1, exatnLogLevel = 2, mcvqeLogLevel = 2, n_chromophores = 4,
       exatnBufferSize = 2, opt_maxiter = 1, n_states = 1, n_cycles = 1;
   std::string acc = "tnqvm";
+  bool double_depth = false;
+  xacc::set_verbose(true);
 
   for (int i = 0; i < arguments.size(); i++) {
     if (arguments[i] == "--n-chromophores") {
@@ -37,19 +39,14 @@ int main(int argc, char **argv) {
     if (arguments[i] == "--n-cycles") {
       n_cycles = std::stoi(arguments[i + 1]);
     }
-    if (arguments[i] == "--verbose") {
-      if (arguments[i + 1] == "true" || arguments[i + 1] == "1") {
-        xacc::set_verbose(true);
-      } else {
-        xacc::set_verbose(false);
-      }
-    }
     if (arguments[i] == "--accelerator") {
       acc = arguments[i + 1];
     }
+    if (arguments[i] == "--double-depth") {
+      if (arguments[i + 1] == "true") double_depth = true;
+    }
   }
 
-  //xacc::logToFile(true);
   xacc::setLoggingLevel(exatnLogLevel);
 
   // pseudo random number generator
@@ -67,6 +64,7 @@ int main(int argc, char **argv) {
   };
 
   std::ofstream datafile("datafile.txt", std::ofstream::out);
+  
   if (n_chromophores <= 18) {
     const char *data = R"foo(0
 Ground state energy: -2263.263771754
@@ -216,16 +214,20 @@ Transition dipole moment: 1.5656,2.8158,-0.0976
   datafile.close();
   }
 
-  
-  std::string path = "./datafile.txt";
+  std::string path =  "datafile.txt";
   auto optimizer = xacc::getOptimizer("nlopt", {{"nlopt-maxeval", opt_maxiter}});
 
   // ExaTN visitor
   std::shared_ptr<xacc::Accelerator> accelerator;
+  xacc::HeterogeneousMap hetMap;
   if (acc == "tnqvm") {
+    hetMap.insert("tnqvm-visitor", "exatn");
+    hetMap.insert("exatn-buffer-size-gb", exatnBufferSize);
+    hetMap.insert("exp-val-by-conjugate", double_depth);
     accelerator = xacc::getAccelerator(
         "tnqvm", {{"tnqvm-visitor", "exatn"},
-                  {"exatn-buffer-size-gb", exatnBufferSize}});
+                  {"exatn-buffer-size-gb", exatnBufferSize},
+		  {"exp-val-by-conjugate", double_depth}});
   } else if (acc == "qpp") {
     accelerator = xacc::getAccelerator("qpp");
   } else if (acc == "aer") {
@@ -235,6 +237,7 @@ Transition dipole moment: 1.5656,2.8158,-0.0976
   // decorate accelerator
   accelerator = xacc::getAcceleratorDecorator(
       "hpc-virtualization", accelerator, {{"n-virtual-qpus", n_virt_qpus}});
+  accelerator->updateConfiguration(hetMap);
 
   auto mc_vqe = xacc::getAlgorithm("mc-vqe");
   mc_vqe->initialize(

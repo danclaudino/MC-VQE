@@ -14,10 +14,10 @@
 #define XACC_ALGORITHM_MC_VQE_HPP_
 
 #include "Algorithm.hpp"
-#include "AlgorithmGradientStrategy.hpp"
 #include "xacc_service.hpp"
 #include <Eigen/Dense>
 #include <chrono>
+#include <fstream>
 
 namespace xacc {
 namespace algorithm {
@@ -26,7 +26,6 @@ protected:
   Optimizer *optimizer;
   Accelerator *accelerator;
   HeterogeneousMap parameters;
-  std::shared_ptr<AlgorithmGradientStrategy> gradientStrategy;
 
   // MC-VQE variables
 
@@ -56,7 +55,8 @@ protected:
   std::shared_ptr<CompositeInstruction> entangler;
   // start time of simulation
   std::chrono::system_clock::time_point start;
-  // indices of nearest-neighbor pairs
+  // mc-vqe log file
+  mutable std::ofstream logFile; 
 
   // constructs CIS state preparation circiuit
   std::shared_ptr<CompositeInstruction>
@@ -76,8 +76,7 @@ protected:
                     const std::shared_ptr<CompositeInstruction> kernel,
                     const std::vector<double> x) const;
 
-  double getElapsedTime(const std::chrono::system_clock::time_point start,
-                        const std::chrono::system_clock::time_point end) const;
+  double timer() const;
 
   // controls the level of printing
   int logLevel = 1;

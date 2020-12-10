@@ -31,6 +31,7 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
    * @param[in] HeterogeneousMap A map of strings to keys
    */
 
+  logFile.open("mcvqe.log", std::ofstream::out);  
   start = std::chrono::high_resolution_clock::now();
   if (!parameters.pointerLikeExists<Accelerator>("accelerator")) {
     std::cout << "Acc was false\n";
@@ -86,6 +87,9 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   // Manipulate quantum chemistry data to compute AIEM Hamiltonian
   // and angles for CIS state preparation
   preProcessing();
+  logControl("Computed AIEM Hamiltonian and CIS gate angles [" +
+                 std::to_string(timer()) + " s]",
+             1);
 
   // Number of states to compute (< nChromophores + 1)
   // (For testing purposes)
@@ -93,18 +97,6 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
     nStates = parameters.get<int>("n-states");
   }
 
-  // Instantiate gradient class if a valid one is provided
-  if (parameters.stringExists("gradient-strategy")) {
-    gradientStrategy = xacc::getService<AlgorithmGradientStrategy>(
-        parameters.getString("gradient-strategy"));
-    gradientStrategy->initialize({std::make_pair("observable", observable)});
-  }
-
-  auto endPrep = std::chrono::high_resolution_clock::now();
-  auto prepTime = getElapsedTime(start, endPrep);
-  logControl("AIEM Hamiltonian and state preparation parameters [" +
-                 std::to_string(prepTime) + " s]",
-             1);
 
   return true;
 }
@@ -117,21 +109,18 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
 
   // entangledHamiltonian stores the Hamiltonian matrix elements
   // in the basis of MC states
-  Eigen::MatrixXd entangledHamiltonian(nStates, nStates);
-  entangledHamiltonian.setZero();
+  Eigen::MatrixXd entangledHamiltonian = Eigen::MatrixXd::Zero(nStates, nStates);
+  //entangledHamiltonian.setZero();
 
   // all CIS states share the same parameterized entangler gates
   auto entangler = entanglerCircuit();
   // number of parameters to be optimized
   auto nOptParams = entangler->nVariables();
   // Only store the diagonal when it lowers the average energy
-  Eigen::VectorXd diagonal(nStates);
+  Eigen::VectorXd diagonal = Eigen::VectorXd::Zero(nStates);;
 
   // store circuit depth, # of gates and pass to buffer
   int depth = 0, nGates = 0;
-
-  logControl("Starting the MC-VQE optimization", 1);
-  auto startOpt = std::chrono::high_resolution_clock::now();
 
   double oldAverageEnergy = 0.0;
   // f is the objective function
@@ -139,7 +128,6 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
       [&, this](const std::vector<double> &x, std::vector<double> &dx) {
         // MC-VQE minimizes the average energy over all MC states
         double averageEnergy = 0.0;
-        auto startIter = std::chrono::high_resolution_clock::now();
 
         // we take the gradient of the average energy as the average over
         // the gradients of each state
@@ -148,100 +136,63 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
         // loop over states
         for (int state = 0; state < nStates; state++) {
 
-          // fsToExec stores observed circuits to compute gradients
-          std::vector<std::shared_ptr<CompositeInstruction>> gradFsToExec;
-
           // retrieve CIS state preparation instructions and add entangler
           auto kernel = statePreparationCircuit(CISGateAngles.col(state));
           kernel->addVariables(entangler->getVariables());
           for (auto &inst : entangler->getInstructions()) {
             kernel->addInstruction(inst);
           }
+          logControl("Circuit preparation for state # " + std::to_string(state) + " [" +
+                         std::to_string(timer()) + " s]",
+                     2);
 
           if (depth == 0) {
             depth = kernel->depth();
             nGates = kernel->nInstructions();
           }
 
-          logControl("Printing circuit for state #" + std::to_string(state), 3);
-          logControl(kernel->toString(), 3);
+	  // Not going to print the circuits for now
+          //logControl("Printing circuit for state #" + std::to_string(state), 3);
+          //logControl(kernel->toString(), 3);
 
-          // Cleaned this up by calling VQE
+          // Call VQE objective function
+          /*
           if (tnqvmLog) {
             xacc::set_verbose(true);
-          }
+          }*/
+	  logControl("Calling vqe::execute() [" + std::to_string(timer()) + " s]", 2);
           auto energy = vqeWrapper(observable, kernel, x);
+	  logControl("Completed vqe::execute() [" + std::to_string(timer()) + " s]", 2);
+	/*
           if (tnqvmLog) {
             xacc::set_verbose(false);
-          }
-
-          // Retrieve instructions for gradient, if a pointer of type
-          // AlgorithmGradientStrategy is given
-          if (gradientStrategy) {
-
-            // Gradient instructions to be sent to the qpu
-            gradFsToExec = gradientStrategy->getGradientExecutions(kernel, x);
-            logControl("Number of instructions for energy calculation: " +
-                           std::to_string(observable->getSubTerms().size()),
-                       1);
-            logControl("Number of instructions for gradient calculation: " +
-                           std::to_string(gradFsToExec.size()),
-                       1);
-
-            if (tnqvmLog) {
-              xacc::set_verbose(true);
-            }
-            // temp instance of AcceleratorBuffer
-            auto tmpBuffer = xacc::qalloc(buffer->size());
-            // execute parametrized instructions on tmpBuffer
-            accelerator->execute(tmpBuffer, gradFsToExec);
-            // children buffers one for each executed function
-            auto buffers = tmpBuffer->getChildren();
-            if (tnqvmLog) {
-              xacc::set_verbose(false);
-            }
-
-            // update gradient vector
-            auto tmpGrad = dx;
-            gradientStrategy->compute(tmpGrad, buffers);
-
-            // Because AlgorithmGradientStrategy methods take reference to both
-            // x and dx we need to keep track of the gradient for each state
-            for (int i = 0; i < dx.size(); i++) {
-              averageGrad[i] += tmpGrad[i] / nStates;
-            }
-          }
+          }*/
+          logControl("State # " + std::to_string(state) + " energy = " +
+                         std::to_string(energy) + " [" + std::to_string(timer()) + " s]",
+                     2);
 
           // state energy goes to the diagonal of entangledHamiltonian
           diagonal(state) = energy;
           averageEnergy += energy;
-          logControl("State # " + std::to_string(state) + " energy " +
-                         std::to_string(energy),
-                     2);
         }
+
+        logControl("Energy of all states computed for the current entangler [" 
+			+ std::to_string(timer()) + " s]", 1);
 
         // Average energy at the end of current iteration
         averageEnergy /= nStates;
 
-        // Update dx with the proper average gradient
-        if (!averageGrad.empty()) {
-          dx = averageGrad;
-          averageGrad.clear();
-        }
-
         // only store the MC energies if they lower the average energy
         if (averageEnergy < oldAverageEnergy) {
           oldAverageEnergy = averageEnergy;
+          logControl("Updated average energy [" + std::to_string(timer()) + " s]", 1);
           entangledHamiltonian.diagonal() = diagonal;
+          logControl("Updated Hamiltonian diagonal [" + 
+		  std::to_string(timer()) + " s]", 1);
         }
 
-        auto endIter = std::chrono::high_resolution_clock::now();
-        auto iterTime = getElapsedTime(endIter, startIter);
         logControl("Optimization iteration finished [" +
-                       std::to_string(iterTime) + " s]",
-                   2);
-        logControl("Average iteration time [" +
-                       std::to_string(iterTime / nStates) + " s]",
+                       std::to_string(timer()) + " s]",
                    2);
 
         // store current info
@@ -250,28 +201,29 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
         for (int i = 1; i < x.size(); i++)
           ss << "," << x[i];
         ss << ") = " << std::setprecision(12) << averageEnergy;
-        logControl(ss.str(), 2);
+        logControl(ss.str() + "\n", 2);
 
         return averageEnergy;
       },
       nOptParams);
 
   // run optimization
+  logControl("Starting the MC-VQE optimization [" + std::to_string(timer()) + " s]\n", 1);
   auto result = optimizer->optimize(f);
+  logControl("MC-VQE optimization complete [" +
+                 std::to_string(timer()) + " s]",
+             1);
+
   buffer->addExtraInfo("opt-average-energy", ExtraInfo(result.first));
   buffer->addExtraInfo("circuit-depth", ExtraInfo(depth));
   buffer->addExtraInfo("n-gates", ExtraInfo(nGates));
   buffer->addExtraInfo("opt-params", ExtraInfo(result.second));
-  auto endOpt = std::chrono::high_resolution_clock::now();
-  auto totalOpt = getElapsedTime(endOpt, startOpt);
-  logControl("MC-VQE entangler optimization finished [" +
-                 std::to_string(totalOpt) + " s]",
+  logControl("Persisted info in the buffer [" +
+                 std::to_string(timer()) + " s]",
              1);
-  logControl("MC-VQE optimization complete", 1);
 
   if (doInterference) {
     // now construct interference states and observe Hamiltonian
-    auto startMC = std::chrono::high_resolution_clock::now();
     auto optimizedEntangler = result.second;
     logControl(
         "Computing Hamiltonian matrix elements in the interference state basis",
@@ -329,10 +281,8 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
       }
     }
 
-    auto endMC = std::chrono::high_resolution_clock::now();
-    auto MCTime = getElapsedTime(endMC, startMC);
-    logControl("Interference basis Hamiltonian matrix elements computed [" +
-                   std::to_string(MCTime) + " s]",
+    logControl("Computed interference basis Hamiltonian matrix elements [" +
+                   std::to_string(timer()) + " s]",
                1);
 
     logControl("Diagonalizing entangled Hamiltonian", 1);
@@ -343,6 +293,8 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
     auto MC_VQE_Energies = EigenSolver.eigenvalues();
     auto MC_VQE_States = EigenSolver.eigenvectors();
 
+    logControl("Diagonalized entangled Hamiltonian [" + std::to_string(timer()) + " s]", 1);
+
     std::stringstream ss;
     ss << "MC-VQE energy spectrum";
     for (auto e : MC_VQE_Energies) {
@@ -352,11 +304,11 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
     buffer->addExtraInfo("opt-spectrum", ExtraInfo(ss.str()));
     logControl(ss.str(), 1);
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto totalTime = getElapsedTime(end, start);
     logControl(
-        "MC-VQE simulation finished [" + std::to_string(totalTime) + " s]", 1);
+        "MC-VQE simulation finished [" + std::to_string(timer()) + " s]", 1);
   }
+
+  logFile.close();
   return;
 }
 
@@ -414,7 +366,6 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
   buffer->addExtraInfo("n-gates", ExtraInfo(nGates));
   if (doInterference) {
     // now construct interference states and observe Hamiltonian
-    auto startMC = std::chrono::high_resolution_clock::now();
     logControl(
         "Computing Hamiltonian matrix elements in the interference state basis",
         1);
@@ -469,14 +420,6 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
       }
     }
 
-    auto endMC = std::chrono::high_resolution_clock::now();
-    auto MCTime = std::chrono::duration_cast<std::chrono::duration<double>>(
-                      endMC - startMC)
-                      .count();
-    logControl("Interference basis Hamiltonian matrix elements computed [" +
-                   std::to_string(MCTime) + " s]",
-               1);
-
     logControl("Diagonalizing entangled Hamiltonian", 1);
     // Diagonalizing the entangledHamiltonian gives the energy spectrum
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(
@@ -492,13 +435,6 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
 
     buffer->addExtraInfo("opt-spectrum", ExtraInfo(ss.str()));
     logControl(ss.str(), 1);
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto totalTime =
-        std::chrono::duration_cast<std::chrono::duration<double>>(end - start)
-            .count();
-    logControl(
-        "MC-VQE simulation finished [" + std::to_string(totalTime) + " s]", 1);
 
     std::vector<double> spectrum(MC_VQE_Energies.data(),
                                  MC_VQE_Energies.data() +
@@ -747,7 +683,7 @@ void MC_VQE::preProcessing() {
       dipoleT(A, xyz) = std::stod(comp);
       xyz++;
     }
-    // std::getline(file, line);
+    //std::getline(file, line);
   }
   file.close();
 
@@ -941,6 +877,7 @@ void MC_VQE::logControl(const std::string message, const int level) const {
   if (logLevel >= level) {
     xacc::set_verbose(true);
     xacc::info(message);
+    logFile << message << "\n";
     xacc::set_verbose(false);
   }
   return;
@@ -959,11 +896,12 @@ double MC_VQE::vqeWrapper(const std::shared_ptr<Observable> observable,
 }
 
 double
-MC_VQE::getElapsedTime(const std::chrono::system_clock::time_point start,
-                       const std::chrono::system_clock::time_point end) const {
-  return std::chrono::duration_cast<std::chrono::duration<double>>(end - start)
+MC_VQE::timer() const {
+
+  auto now = std::chrono::high_resolution_clock::now(); 
+  return std::chrono::duration_cast<std::chrono::duration<double>>(now - start)
       .count();
-}
+} 
 
 } // namespace algorithm
 } // namespace xacc

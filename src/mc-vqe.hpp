@@ -37,7 +37,7 @@ protected:
   bool doInterference = true;
   // state preparation angles
   Eigen::MatrixXd CISGateAngles, CISEigenstates;
-  mutable Eigen::MatrixXd subspaceRotation;
+  mutable Eigen::MatrixXd subSpaceRotation;
   // AIEM Hamiltonian
   std::shared_ptr<Observable> observable;
   // # number of CIS states = nChromophores + 1

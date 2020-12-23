@@ -151,22 +151,16 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
             nGates = kernel->nInstructions();
           }
 
-	  // Not going to print the circuits for now
-          //logControl("Printing circuit for state #" + std::to_string(state), 3);
-          //logControl(kernel->toString(), 3);
-
           // Call VQE objective function
-          /*
           if (tnqvmLog) {
             xacc::set_verbose(true);
-          }*/
+          }
 	  logControl("Calling vqe::execute() [" + std::to_string(timer()) + " s]", 2);
           auto energy = vqeWrapper(observable, kernel, x);
 	  logControl("Completed vqe::execute() [" + std::to_string(timer()) + " s]", 2);
-	/*
           if (tnqvmLog) {
             xacc::set_verbose(false);
-          }*/
+          }
           logControl("State # " + std::to_string(state) + " energy = " +
                          std::to_string(energy) + " [" + std::to_string(timer()) + " s]",
                      2);
@@ -635,6 +629,8 @@ void MC_VQE::preProcessing() {
     xacc::error("Cannot access data file.");
     return;
   }
+  //std::stringstream file;
+  //file << filec.rdbuf();
 
   std::string line, tmp, comp;
   int xyz, start;
@@ -875,10 +871,8 @@ void MC_VQE::logControl(const std::string message, const int level) const {
    */
 
   if (logLevel >= level) {
-    xacc::set_verbose(true);
     xacc::info(message);
     logFile << message << "\n";
-    xacc::set_verbose(false);
   }
   return;
 }

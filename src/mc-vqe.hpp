@@ -14,6 +14,7 @@
 #define XACC_ALGORITHM_MC_VQE_HPP_
 
 #include "Algorithm.hpp"
+#include "xacc.hpp"
 #include "xacc_service.hpp"
 #include <Eigen/Dense>
 #include <chrono>
@@ -36,8 +37,10 @@ protected:
   // if false, will not compute interference matrix
   bool doInterference = true;
   // state preparation angles
-  Eigen::MatrixXd CISGateAngles, CISEigenstates;
+  Eigen::MatrixXd CISGateAngles, CISEigenstates, CISHamiltonian;
+  Eigen::VectorXd CISEnergies;
   mutable Eigen::MatrixXd subSpaceRotation;
+  mutable Eigen::VectorXd diagonal;
   // AIEM Hamiltonian
   std::shared_ptr<Observable> observable;
   // # number of CIS states = nChromophores + 1
@@ -49,6 +52,8 @@ protected:
   const double ANGSTROM2BOHR = 1.8897161646320724;
   // D to a.u.
   const double DEBYE2AU = 0.393430307;
+  // pi/4
+  const double PI_4 = xacc::constants::pi / 4.0;
   // path to file with quantum chemistry data
   std::string dataPath;
   // entangler part of the circuit
@@ -56,7 +61,9 @@ protected:
   // start time of simulation
   std::chrono::system_clock::time_point start;
   // mc-vqe log file
-  mutable std::ofstream logFile; 
+  mutable std::ofstream logFile;
+  // valid chromophore pairs (nearest neighbor)
+  std::map<int, std::vector<int>> pairs;
 
   // constructs CIS state preparation circiuit
   std::shared_ptr<CompositeInstruction>
@@ -69,13 +76,16 @@ protected:
   // and the gates for state preparation
   void preProcessing();
 
+  // gets angles from state coefficients
   Eigen::MatrixXd
   statePreparationAngles(const Eigen::MatrixXd CoefficientMatrix);
 
+  // calls the VQE objective function
   double vqeWrapper(const std::shared_ptr<Observable> observable,
                     const std::shared_ptr<CompositeInstruction> kernel,
                     const std::vector<double> x) const;
 
+  // gets time stamp
   double timer() const;
 
   // controls the level of printing
@@ -84,23 +94,26 @@ protected:
   void logControl(const std::string message, const int level) const;
 
   // response/gradient
-  std::vector<Eigen::VectorXd> getUnrelaxed1PDM(const std::string pauliTerm,
-                                                const std::vector<double> x);
-
-  std::vector<Eigen::MatrixXd> getUnrelaxed2PDM(const std::string pauliTerm,
-                                                const std::vector<double> x);
-
   std::vector<Eigen::VectorXd> vqeMultipliers;
+  std::vector<Eigen::MatrixXd> cpCRSMultipliers;
+  std::vector<Eigen::VectorXd> getUnrelaxed1PDM(const std::string termStr,
+                                                const std::vector<double> x);
+
+  std::vector<Eigen::MatrixXd> getUnrelaxed2PDM(const std::string termStr,
+                                                const std::vector<double> x);
+
   void getVQEMultipliers(const std::vector<double> x);
 
-  Eigen::VectorXd getVQE1PDM(const std::string pauliTerm,
+  Eigen::VectorXd getVQE1PDM(const std::string termStr,
                              const std::vector<double> x);
 
-  Eigen::MatrixXd getVQE2PDM(const std::string pauliTerm,
+  Eigen::MatrixXd getVQE2PDM(const std::string termStr,
                              const std::vector<double> x);
 
-  std::vector<Eigen::VectorXd> getCRS1PDM(const std::string pauliTerm,
-                                          const std::vector<double> x);
+  void getCRSMultipliers(const std::vector<double> x);
+
+  std::vector<Eigen::VectorXd> getCRS1PDM(const std::string termStr);
+  std::vector<Eigen::MatrixXd> getCRS2PDM(const std::string termStr);
 
 public:
   bool initialize(const HeterogeneousMap &parameters) override;

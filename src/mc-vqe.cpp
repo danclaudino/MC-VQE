@@ -15,7 +15,6 @@
 #include "CompositeInstruction.hpp"
 #include "Observable.hpp"
 #include "PauliOperator.hpp"
-#include "xacc.hpp"
 #include "xacc_plugin.hpp"
 #include "xacc_service.hpp"
 #include <Eigen/Eigenvalues>
@@ -31,7 +30,7 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
    * @param[in] HeterogeneousMap A map of strings to keys
    */
 
-  logFile.open("mcvqe.log", std::ofstream::out);  
+  logFile.open("mcvqe.log", std::ofstream::out);
   start = std::chrono::high_resolution_clock::now();
   if (!parameters.pointerLikeExists<Accelerator>("accelerator")) {
     std::cout << "Acc was false\n";
@@ -97,7 +96,6 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
     nStates = parameters.get<int>("n-states");
   }
 
-
   return true;
 }
 
@@ -109,15 +107,15 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
 
   // entangledHamiltonian stores the Hamiltonian matrix elements
   // in the basis of MC states
-  Eigen::MatrixXd entangledHamiltonian = Eigen::MatrixXd::Zero(nStates, nStates);
-  //entangledHamiltonian.setZero();
+  Eigen::MatrixXd entangledHamiltonian =
+      Eigen::MatrixXd::Zero(nStates, nStates);
 
   // all CIS states share the same parameterized entangler gates
   auto entangler = entanglerCircuit();
   // number of parameters to be optimized
   auto nOptParams = entangler->nVariables();
   // Only store the diagonal when it lowers the average energy
-  Eigen::VectorXd diagonal = Eigen::VectorXd::Zero(nStates);;
+  diagonal = Eigen::VectorXd::Zero(nStates);
 
   // store circuit depth, # of gates and pass to buffer
   int depth = 0, nGates = 0;
@@ -142,7 +140,8 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
           for (auto &inst : entangler->getInstructions()) {
             kernel->addInstruction(inst);
           }
-          logControl("Circuit preparation for state # " + std::to_string(state) + " [" +
+          logControl("Circuit preparation for state # " +
+                         std::to_string(state) + " [" +
                          std::to_string(timer()) + " s]",
                      2);
 
@@ -155,14 +154,18 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
           if (tnqvmLog) {
             xacc::set_verbose(true);
           }
-	  logControl("Calling vqe::execute() [" + std::to_string(timer()) + " s]", 2);
+          logControl(
+              "Calling vqe::execute() [" + std::to_string(timer()) + " s]", 2);
           auto energy = vqeWrapper(observable, kernel, x);
-	  logControl("Completed vqe::execute() [" + std::to_string(timer()) + " s]", 2);
+          logControl("Completed vqe::execute() [" + std::to_string(timer()) +
+                         " s]",
+                     2);
           if (tnqvmLog) {
             xacc::set_verbose(false);
           }
-          logControl("State # " + std::to_string(state) + " energy = " +
-                         std::to_string(energy) + " [" + std::to_string(timer()) + " s]",
+          logControl("State # " + std::to_string(state) +
+                         " energy = " + std::to_string(energy) + " [" +
+                         std::to_string(timer()) + " s]",
                      2);
 
           // state energy goes to the diagonal of entangledHamiltonian
@@ -170,8 +173,9 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
           averageEnergy += energy;
         }
 
-        logControl("Energy of all states computed for the current entangler [" 
-			+ std::to_string(timer()) + " s]", 1);
+        logControl("Energy of all states computed for the current entangler [" +
+                       std::to_string(timer()) + " s]",
+                   1);
 
         // Average energy at the end of current iteration
         averageEnergy /= nStates;
@@ -179,10 +183,12 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
         // only store the MC energies if they lower the average energy
         if (averageEnergy < oldAverageEnergy) {
           oldAverageEnergy = averageEnergy;
-          logControl("Updated average energy [" + std::to_string(timer()) + " s]", 1);
+          logControl(
+              "Updated average energy [" + std::to_string(timer()) + " s]", 1);
           entangledHamiltonian.diagonal() = diagonal;
-          logControl("Updated Hamiltonian diagonal [" + 
-		  std::to_string(timer()) + " s]", 1);
+          logControl("Updated Hamiltonian diagonal [" +
+                         std::to_string(timer()) + " s]",
+                     1);
         }
 
         logControl("Optimization iteration finished [" +
@@ -202,18 +208,18 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
       nOptParams);
 
   // run optimization
-  logControl("Starting the MC-VQE optimization [" + std::to_string(timer()) + " s]\n", 1);
+  logControl("Starting the MC-VQE optimization [" + std::to_string(timer()) +
+                 " s]\n",
+             1);
   auto result = optimizer->optimize(f);
-  logControl("MC-VQE optimization complete [" +
-                 std::to_string(timer()) + " s]",
+  logControl("MC-VQE optimization complete [" + std::to_string(timer()) + " s]",
              1);
 
   buffer->addExtraInfo("opt-average-energy", ExtraInfo(result.first));
   buffer->addExtraInfo("circuit-depth", ExtraInfo(depth));
   buffer->addExtraInfo("n-gates", ExtraInfo(nGates));
   buffer->addExtraInfo("opt-params", ExtraInfo(result.second));
-  logControl("Persisted info in the buffer [" +
-                 std::to_string(timer()) + " s]",
+  logControl("Persisted info in the buffer [" + std::to_string(timer()) + " s]",
              1);
 
   if (doInterference) {
@@ -287,7 +293,9 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
     auto MC_VQE_Energies = EigenSolver.eigenvalues();
     auto MC_VQE_States = EigenSolver.eigenvectors();
 
-    logControl("Diagonalized entangled Hamiltonian [" + std::to_string(timer()) + " s]", 1);
+    logControl("Diagonalized entangled Hamiltonian [" +
+                   std::to_string(timer()) + " s]",
+               1);
 
     std::stringstream ss;
     ss << "MC-VQE energy spectrum";
@@ -298,8 +306,8 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
     buffer->addExtraInfo("opt-spectrum", ExtraInfo(ss.str()));
     logControl(ss.str(), 1);
 
-    logControl(
-        "MC-VQE simulation finished [" + std::to_string(timer()) + " s]", 1);
+    logControl("MC-VQE simulation finished [" + std::to_string(timer()) + " s]",
+               1);
   }
 
   logFile.close();
@@ -310,8 +318,8 @@ std::vector<double>
 MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                 const std::vector<double> &x) {
 
-  Eigen::MatrixXd entangledHamiltonian(nStates, nStates);
-  entangledHamiltonian.setZero();
+  Eigen::MatrixXd entangledHamiltonian =
+      Eigen::MatrixXd::Zero(nStates, nStates);
 
   // all CIS states share the same entangler gates
   auto entangler = entanglerCircuit();
@@ -446,16 +454,15 @@ MC_VQE::statePreparationCircuit(const Eigen::VectorXd &angles) const {
    * @param[in] angles Angles to parameterize CIS state
    */
 
-  auto provider = xacc::getIRProvider(
-      "quantum"); // Provider to create IR for CompositeInstruction, aka circuit
-  auto statePreparationInstructions =
-      provider->createComposite("mcvqeCircuit"); // allocate memory for circuit
+  // Provider to create IR for CompositeInstruction, aka circuit
+  auto provider = xacc::getIRProvider("quantum");
+  // allocate memory for circuit
+  auto statePreparationInstructions = provider->createComposite("mcvqeCircuit");
 
   // Beginning of CIS state preparation
   //
   // Ry "pump"
-  auto ry = provider->createInstruction("Ry", std::vector<std::size_t>{0},
-                                        {angles(0)});
+  auto ry = provider->createInstruction("Ry", {0}, {angles(0)});
   statePreparationInstructions->addInstruction(ry);
 
   // Fy gates = Ry(-theta/2)-CZ-Ry(theta/2) = Ry(-theta/2)-H-CNOT-H-Ry(theta/2)
@@ -516,7 +523,6 @@ std::shared_ptr<CompositeInstruction> MC_VQE::entanglerCircuit() const {
   //                |            |
   // |B>--[Ry(x1)]--x--[Ry(x3)]--x--[Ry(x5)]-
   //
-  std::string paramLetter = "x";
   auto entanglerGate = [&](const std::size_t control, const std::size_t target,
                            int paramCounter) {
     /** Lambda function to construct the entangler gates
@@ -533,16 +539,14 @@ std::shared_ptr<CompositeInstruction> MC_VQE::entanglerCircuit() const {
 
     auto ry1 = provider->createInstruction(
         "Ry", {control},
-        {InstructionParameter(paramLetter + std::to_string(paramCounter))});
-    entanglerInstructions->addVariable(paramLetter +
-                                       std::to_string(paramCounter));
+        {InstructionParameter("x" + std::to_string(paramCounter))});
+    entanglerInstructions->addVariable("x" + std::to_string(paramCounter));
     entanglerInstructions->addInstruction(ry1);
 
     auto ry2 = provider->createInstruction(
         "Ry", {target},
-        {InstructionParameter(paramLetter + std::to_string(paramCounter + 1))});
-    entanglerInstructions->addVariable(paramLetter +
-                                       std::to_string(paramCounter + 1));
+        {InstructionParameter("x" + std::to_string(paramCounter + 1))});
+    entanglerInstructions->addVariable("x" + std::to_string(paramCounter + 1));
     entanglerInstructions->addInstruction(ry2);
 
     auto cnot2 = provider->createInstruction("CNOT", {control, target});
@@ -550,16 +554,14 @@ std::shared_ptr<CompositeInstruction> MC_VQE::entanglerCircuit() const {
 
     auto ry3 = provider->createInstruction(
         "Ry", {control},
-        {InstructionParameter(paramLetter + std::to_string(paramCounter + 2))});
-    entanglerInstructions->addVariable(paramLetter +
-                                       std::to_string(paramCounter + 2));
+        {InstructionParameter("x" + std::to_string(paramCounter + 2))});
+    entanglerInstructions->addVariable("x" + std::to_string(paramCounter + 2));
     entanglerInstructions->addInstruction(ry3);
 
     auto ry4 = provider->createInstruction(
         "Ry", {target},
-        {InstructionParameter(paramLetter + std::to_string(paramCounter + 3))});
-    entanglerInstructions->addVariable(paramLetter +
-                                       std::to_string(paramCounter + 3));
+        {InstructionParameter("x" + std::to_string(paramCounter + 3))});
+    entanglerInstructions->addVariable("x" + std::to_string(paramCounter + 3));
     entanglerInstructions->addInstruction(ry4);
   };
 
@@ -569,9 +571,8 @@ std::shared_ptr<CompositeInstruction> MC_VQE::entanglerCircuit() const {
     // std::size_t q = i;
     auto ry = provider->createInstruction(
         "Ry", {(std::size_t)i},
-        {InstructionParameter(paramLetter + std::to_string(paramCounter))});
-    entanglerInstructions->addVariable(paramLetter +
-                                       std::to_string(paramCounter));
+        {InstructionParameter("x" + std::to_string(paramCounter))});
+    entanglerInstructions->addVariable("x" + std::to_string(paramCounter));
     entanglerInstructions->addInstruction(ry);
 
     paramCounter++;
@@ -613,24 +614,18 @@ void MC_VQE::preProcessing() {
   // dipoleES = excited state dipole moment vectors
   // dipoleT = transition (between ground and excited states) dipole moment
   // com = center of mass of each chromophore
-  Eigen::VectorXd energiesGS(nChromophores), energiesES(nChromophores);
-  Eigen::MatrixXd dipoleGS(nChromophores, 3), dipoleES(nChromophores, 3),
-      dipoleT(nChromophores, 3), com(nChromophores, 3);
-
-  energiesES.setZero();
-  energiesGS.setZero();
-  dipoleGS.setZero();
-  dipoleES.setZero();
-  dipoleT.setZero();
-  com.setZero();
+  Eigen::VectorXd energiesGS = Eigen::VectorXd::Zero(nChromophores);
+  Eigen::VectorXd energiesES = Eigen::VectorXd::Zero(nChromophores);
+  Eigen::MatrixXd dipoleGS = Eigen::MatrixXd::Zero(nChromophores, 3);
+  Eigen::MatrixXd dipoleES = Eigen::MatrixXd::Zero(nChromophores, 3);
+  Eigen::MatrixXd dipoleT = Eigen::MatrixXd::Zero(nChromophores, 3);
+  Eigen::MatrixXd com = Eigen::MatrixXd::Zero(nChromophores, 3);
 
   std::ifstream file(dataPath);
   if (file.bad()) {
     xacc::error("Cannot access data file.");
     return;
   }
-  //std::stringstream file;
-  //file << filec.rdbuf();
 
   std::string line, tmp, comp;
   int xyz, start;
@@ -679,7 +674,6 @@ void MC_VQE::preProcessing() {
       dipoleT(A, xyz) = std::stod(comp);
       xyz++;
     }
-    //std::getline(file, line);
   }
   file.close();
 
@@ -701,12 +695,7 @@ void MC_VQE::preProcessing() {
            std::pow(d_AB, 3.0); // return matrix element
   };
 
-  // hamiltonian = AIEM Hamiltonian
-  // term = creates individual Pauli terms
-  PauliOperator hamiltonian;
-
   // stores the indices of the valid chromophore pairs
-  std::vector<std::vector<int>> pairs(nChromophores);
   for (int A = 0; A < nChromophores; A++) {
     if (A == 0 && isCyclic) {
       pairs[A] = {A + 1, nChromophores - 1};
@@ -725,20 +714,16 @@ void MC_VQE::preProcessing() {
   // difference of dipole moments, coordinate-wise
   auto dipoleDiff = (dipoleGS - dipoleES) / 2.0;
 
-  Eigen::VectorXd Z_A(nChromophores), X_A(nChromophores);
-  Z_A = D_A;
-  X_A.setZero();
-  Eigen::MatrixXd XX_AB(nChromophores, nChromophores),
-      XZ_AB(nChromophores, nChromophores), ZX_AB(nChromophores, nChromophores),
-      ZZ_AB(nChromophores, nChromophores);
-  XX_AB.setZero();
-  XZ_AB.setZero();
-  ZX_AB.setZero();
-  ZZ_AB.setZero();
-
-  double E = 0.0; // = S_A.sum(), but this only shifts the eigenvalues
+  Eigen::VectorXd Z_A = D_A;
+  Eigen::VectorXd X_A = Eigen::VectorXd::Zero(nChromophores);
+  Eigen::MatrixXd XX_AB = Eigen::MatrixXd::Zero(nChromophores, nChromophores);
+  Eigen::MatrixXd XZ_AB = Eigen::MatrixXd::Zero(nChromophores, nChromophores);
+  Eigen::MatrixXd ZX_AB = Eigen::MatrixXd::Zero(nChromophores, nChromophores);
+  Eigen::MatrixXd ZZ_AB = Eigen::MatrixXd::Zero(nChromophores, nChromophores);
 
   // Compute the AIEM Hamiltonian
+  PauliOperator hamiltonian;
+  double E = 0.0; // = S_A.sum(), but this only shifts the eigenvalues
   for (int A = 0; A < nChromophores; A++) {
 
     for (int B : pairs[A]) {
@@ -776,49 +761,45 @@ void MC_VQE::preProcessing() {
     hamiltonian += PauliOperator({{A, "Z"}}, Z_A(A));
     hamiltonian += PauliOperator({{A, "X"}}, X_A(A));
   }
-
   hamiltonian += PauliOperator(E);
 
-  // Done with the AIEM Hamiltonian
-  // just need a pointer for it and upcast to Observable
-  observable = std::dynamic_pointer_cast<Observable>(
-      std::make_shared<PauliOperator>(hamiltonian));
+  // Done with the AIEM Hamiltonian just need a pointer for it
+  observable = std::make_shared<PauliOperator>(hamiltonian);
 
   // CIS matrix elements in the nChromophore two-state basis
-  Eigen::MatrixXd CISMatrix(nStates, nStates);
-  CISMatrix.setZero();
+  CISHamiltonian = Eigen::MatrixXd::Zero(nStates, nStates);
 
   // E_ref
   auto E_ref = E + Z_A.sum() + 0.5 * ZZ_AB.sum();
-  CISMatrix(0, 0) = E_ref;
+  CISHamiltonian(0, 0) = E_ref;
 
   // diagonal singles-singles
   for (int A = 0; A < nChromophores; A++) {
-    CISMatrix(A + 1, A + 1) = E_ref - 2.0 * Z_A(A);
+    CISHamiltonian(A + 1, A + 1) = E_ref - 2.0 * Z_A(A);
     for (int B : pairs[A]) {
-      CISMatrix(A + 1, A + 1) -= ZZ_AB(A, B) + ZZ_AB(B, A);
+      CISHamiltonian(A + 1, A + 1) -= ZZ_AB(A, B) + ZZ_AB(B, A);
     }
   }
 
   // reference-singles off diagonal
   for (int A = 0; A < nChromophores; A++) {
-    CISMatrix(A + 1, 0) = X_A(A);
+    CISHamiltonian(A + 1, 0) = X_A(A);
     for (int B : pairs[A]) {
-      CISMatrix(A + 1, 0) += 0.5 * (XZ_AB(A, B) + ZX_AB(B, A));
+      CISHamiltonian(A + 1, 0) += 0.5 * (XZ_AB(A, B) + ZX_AB(B, A));
     }
-    CISMatrix(0, A + 1) = CISMatrix(A + 1, 0);
+    CISHamiltonian(0, A + 1) = CISHamiltonian(A + 1, 0);
   }
 
   // singles-singles off-diagonal
   for (int A = 0; A < nChromophores; A++) {
     for (int B : pairs[A]) {
-      CISMatrix(A + 1, B + 1) = XX_AB(A, B);
+      CISHamiltonian(A + 1, B + 1) = XX_AB(A, B);
     }
   }
 
-  // Diagonalizing the CISMatrix
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(CISMatrix);
-  auto CISEnergies = EigenSolver.eigenvalues();
+  // Diagonalizing the CISHamiltonian
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(CISHamiltonian);
+  CISEnergies = EigenSolver.eigenvalues();
   CISEigenstates = EigenSolver.eigenvectors();
 
   CISGateAngles = statePreparationAngles(CISEigenstates);
@@ -889,13 +870,12 @@ double MC_VQE::vqeWrapper(const std::shared_ptr<Observable> observable,
   return vqe->execute(q, x)[0];
 }
 
-double
-MC_VQE::timer() const {
+double MC_VQE::timer() const {
 
-  auto now = std::chrono::high_resolution_clock::now(); 
+  auto now = std::chrono::high_resolution_clock::now();
   return std::chrono::duration_cast<std::chrono::duration<double>>(now - start)
       .count();
-} 
+}
 
 } // namespace algorithm
 } // namespace xacc

@@ -511,7 +511,7 @@ std::vector<Eigen::VectorXd> MC_VQE::getCRS1PDM(const std::string termStr) {
             D += cpCRSMultipliers[state](I, crs) - sum * CISEigenstates(I, crs);
             D *= CISEigenstates(Ip, crs);
 
-            //Eq. 137
+            // Eq. 137
             if (termStr == "Z" && Ip != 0) {
               D *= -2.0;
             }
@@ -578,6 +578,159 @@ std::vector<Eigen::MatrixXd> MC_VQE::getCRS2PDM(const std::string termStr) {
   return CRS2PDM;
 }
 
+std::vector<Eigen::VectorXd>
+MC_VQE::getMonomerGradient(const std::string termStr,
+                           const std::vector<Eigen::VectorXd> pdms) {
+
+  std::vector<Eigen::VectorXd> monomerGradients;
+
+  // Eq. 143
+  for (int state = 0; state < nStates; state++) {
+
+    Eigen::VectorXd grad = Eigen::VectorXd::Constant(nChromophores, 0.5);
+
+    if (termStr == "H") {
+      grad += 0.5 * pdms[state];
+    }
+
+    if (termStr == "P") {
+      grad -= 0.5 * pdms[state];
+    }
+
+    monomerGradients.push_back(grad);
+  }
+
+  return monomerGradients;
+}
+
+std::vector<Eigen::MatrixXd>
+MC_VQE::getDimerDipoleGradient(const std::string termStr,
+                               const std::vector<Eigen::MatrixXd> pdms) {
+
+  // Eq. 147
+  auto dipolePartial = [&](const Eigen::Vector3d mu, const Eigen::Vector3d r) {
+    auto d = r.norm();
+    return (mu / std::pow(d, 3.0) - 3.0 * mu.dot(r) * r / std::pow(d, 5.0));
+  };
+
+  auto distancePartial = [&](const Eigen::Vector3d muA,
+                             const Eigen::Vector3d muB,
+                             const Eigen::Vector3d r) {
+    auto d = r.norm();
+    Eigen::Vector3d ret = Eigen::Vector3d::Zero();
+    ret -= 3.0 * muA.dot(muB) / std::pow(d, 5) * r;
+    ret += 15.0 * muA.dot(r) * muB.dot(r) / std::pow(d, 7) * r;
+    ret -= 3.0 * muB.dot(r) / std::pow(d, 5) * muA;
+    ret -= 3.0 * muA.dot(r) / std::pow(d, 5) * muB;
+
+    return ret;
+  };
+
+  std::vector<Eigen::MatrixXd> dimerGradients;
+
+  // Eq. 143
+  for (int state = 0; state < nStates; state++) {
+
+    Eigen::MatrixXd etaH = Eigen::VectorXd::Zero(nChromophores, 3);
+    Eigen::MatrixXd etaP = Eigen::VectorXd::Zero(nChromophores, 3);
+    Eigen::MatrixXd etaT = Eigen::VectorXd::Zero(nChromophores, 3);
+    Eigen::MatrixXd etaR = Eigen::VectorXd::Zero(nChromophores, 3);
+
+    for (int A = 0; A < nChromophores; A++) {
+
+      for (auto B : pairs[A]) {
+
+        auto r = centerOfMass.row(A) - centerOfMass.row(B);
+
+        etaH.row(A) += dipolePartial(dipoleGS.row(B), r) / 4.0;
+        etaH.row(A) -= dipolePartial(dipoleES.row(B), r) / 4.0;
+        etaH.row(A) += dipolePartial(dipoleT.row(B), r) / 2.0;
+
+        etaH.row(B) += dipolePartial(dipoleGS.row(A), r) / 4.0;
+        etaH.row(B) -= dipolePartial(dipoleES.row(A), r) / 4.0;
+        etaH.row(B) += dipolePartial(dipoleT.row(A), r) / 2.0;
+
+        etaP.row(A) -= dipolePartial(dipoleGS.row(B), r) / 4.0;
+        etaP.row(A) += dipolePartial(dipoleES.row(B), r) / 4.0;
+        etaP.row(A) -= dipolePartial(dipoleT.row(B), r) / 2.0;
+
+        etaP.row(B) -= dipolePartial(dipoleGS.row(A), r) / 4.0;
+        etaP.row(B) += dipolePartial(dipoleES.row(A), r) / 4.0;
+        etaP.row(B) -= dipolePartial(dipoleT.row(A), r) / 2.0;
+
+        etaT.row(A) += dipolePartial(dipoleT.row(B), r);
+        etaT.row(A) += dipolePartial(dipoleGS.row(B), r) / 2.0;
+        etaT.row(A) -= dipolePartial(dipoleES.row(B), r) / 2.0;
+
+        etaT.row(B) += dipolePartial(dipoleT.row(A), r);
+        etaT.row(B) += dipolePartial(dipoleGS.row(A), r) / 2.0;
+        etaT.row(B) -= dipolePartial(dipoleES.row(A), r) / 2.0;
+
+        // HH
+        etaR.row(A) -=
+            distancePartial(dipoleGS.row(A), dipoleGS.row(B), r) / 4.0;
+        etaR.row(B) +=
+            distancePartial(dipoleGS.row(B), dipoleGS.row(A), r) / 4.0;
+
+        // HP
+        etaR.row(A) +=
+            distancePartial(dipoleGS.row(A), dipoleES.row(B), r) / 4.0;
+        etaR.row(B) -=
+            distancePartial(dipoleGS.row(B), dipoleES.row(A), r) / 4.0;
+
+        // HT
+        etaR.row(A) -=
+            distancePartial(dipoleGS.row(A), dipoleT.row(B), r) / 2.0;
+        etaR.row(B) +=
+            distancePartial(dipoleGS.row(B), dipoleT.row(A), r) / 2.0;
+
+        // PP
+        etaR.row(A) -=
+            distancePartial(dipoleES.row(A), dipoleES.row(B), r) / 4.0;
+        etaR.row(B) +=
+            distancePartial(dipoleES.row(B), dipoleES.row(A), r) / 4.0;
+
+        // PH
+        etaR.row(A) +=
+            distancePartial(dipoleES.row(A), dipoleGS.row(B), r) / 4.0;
+        etaR.row(B) -=
+            distancePartial(dipoleES.row(B), dipoleGS.row(A), r) / 4.0;
+
+        // PT
+        etaR.row(A) +=
+            distancePartial(dipoleES.row(A), dipoleT.row(B), r) / 2.0;
+        etaR.row(B) -=
+            distancePartial(dipoleES.row(B), dipoleT.row(A), r) / 2.0;
+
+        // TT
+        etaR.row(A) -= distancePartial(dipoleT.row(A), dipoleT.row(B), r);
+        etaR.row(B) += distancePartial(dipoleT.row(B), dipoleT.row(A), r);
+
+        // TH
+        etaR.row(A) -=
+            distancePartial(dipoleT.row(A), dipoleGS.row(B), r) / 2.0;
+        etaR.row(B) +=
+            distancePartial(dipoleT.row(B), dipoleGS.row(A), r) / 2.0;
+
+        // TP
+        etaR.row(A) +=
+            distancePartial(dipoleT.row(A), dipoleES.row(B), r) / 2.0;
+        etaR.row(B) -=
+            distancePartial(dipoleT.row(B), dipoleES.row(A), r) / 2.0;
+
+        etaH.row(A) *= 0.5 * pdms[state](A, B);
+        etaP.row(A) *= 0.5 * pdms[state](A, B);
+        etaT.row(A) *= 0.5 * pdms[state](A, B);
+        etaR.row(A) *= 0.5 * pdms[state](A, B);
+
+        etaH.row(B) *= 0.5 * pdms[state](A, B);
+        etaP.row(B) *= 0.5 * pdms[state](A, B);
+        etaT.row(B) *= 0.5 * pdms[state](A, B);
+        etaR.row(B) *= 0.5 * pdms[state](A, B);
+      }
+    }
+  }
+}
 
 } // namespace algorithm
 } // namespace xacc

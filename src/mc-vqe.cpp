@@ -81,14 +81,6 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   }
 
   nStates = nChromophores + 1;
-  CISGateAngles.resize(nChromophores, nStates);
-
-  // Manipulate quantum chemistry data to compute AIEM Hamiltonian
-  // and angles for CIS state preparation
-  preProcessing();
-  logControl("Computed AIEM Hamiltonian and CIS gate angles [" +
-                 std::to_string(timer()) + " s]",
-             1);
 
   // Number of states to compute (< nChromophores + 1)
   // (For testing purposes)
@@ -597,7 +589,7 @@ std::shared_ptr<CompositeInstruction> MC_VQE::entanglerCircuit() const {
   return entanglerInstructions;
 }
 
-void MC_VQE::preProcessing() {
+void MC_VQE::readData() {
   /** Function to process the quantum chemistry data into CIS state preparation
    * angles and the AIEM Hamiltonian.
    *
@@ -614,12 +606,12 @@ void MC_VQE::preProcessing() {
   // dipoleES = excited state dipole moment vectors
   // dipoleT = transition (between ground and excited states) dipole moment
   // com = center of mass of each chromophore
-  Eigen::VectorXd energiesGS = Eigen::VectorXd::Zero(nChromophores);
-  Eigen::VectorXd energiesES = Eigen::VectorXd::Zero(nChromophores);
-  Eigen::MatrixXd dipoleGS = Eigen::MatrixXd::Zero(nChromophores, 3);
-  Eigen::MatrixXd dipoleES = Eigen::MatrixXd::Zero(nChromophores, 3);
-  Eigen::MatrixXd dipoleT = Eigen::MatrixXd::Zero(nChromophores, 3);
-  Eigen::MatrixXd com = Eigen::MatrixXd::Zero(nChromophores, 3);
+  energiesGS = Eigen::VectorXd::Zero(nChromophores);
+  energiesES = Eigen::VectorXd::Zero(nChromophores);
+  dipoleGS = Eigen::MatrixXd::Zero(nChromophores, 3);
+  dipoleES = Eigen::MatrixXd::Zero(nChromophores, 3);
+  dipoleT = Eigen::MatrixXd::Zero(nChromophores, 3);
+  centerOfMass = Eigen::MatrixXd::Zero(nChromophores, 3);
 
   std::ifstream file(dataPath);
   if (file.bad()) {
@@ -644,7 +636,7 @@ void MC_VQE::preProcessing() {
     std::stringstream comStream(tmp);
     xyz = 0;
     while (std::getline(comStream, comp, ',')) {
-      com(A, xyz) = std::stod(comp);
+      centerOfMass(A, xyz) = std::stod(comp);
       xyz++;
     }
 
@@ -677,9 +669,14 @@ void MC_VQE::preProcessing() {
   }
   file.close();
 
-  com *= ANGSTROM2BOHR; // angstrom to bohr
+  centerOfMass *= ANGSTROM2BOHR; // angstrom to bohr
   dipoleGS *= DEBYE2AU; // D to a.u.
   dipoleES *= DEBYE2AU;
+
+  return;
+}
+
+void MC_VQE::computeAIEMAndCIS() {
 
   auto twoBodyH = [&](const Eigen::VectorXd mu_A, const Eigen::VectorXd mu_B,
                       const Eigen::VectorXd r_AB) {
@@ -707,14 +704,14 @@ void MC_VQE::preProcessing() {
   }
 
   // Ref2 Eq. 20 and 21
-  auto S_A = (energiesGS + energiesES) / 2.0;
-  auto D_A = (energiesGS - energiesES) / 2.0;
+  //auto S_A = (energiesGS + energiesES) / 2.0;
+  //auto D_A = (energiesGS - energiesES) / 2.0;
   // sum of dipole moments, coordinate-wise
   auto dipoleSum = (dipoleGS + dipoleES) / 2.0;
   // difference of dipole moments, coordinate-wise
   auto dipoleDiff = (dipoleGS - dipoleES) / 2.0;
 
-  Eigen::VectorXd Z_A = D_A;
+  Eigen::VectorXd Z_A = (energiesGS - energiesES) / 2.0;
   Eigen::VectorXd X_A = Eigen::VectorXd::Zero(nChromophores);
   Eigen::MatrixXd XX_AB = Eigen::MatrixXd::Zero(nChromophores, nChromophores);
   Eigen::MatrixXd XZ_AB = Eigen::MatrixXd::Zero(nChromophores, nChromophores);
@@ -729,28 +726,28 @@ void MC_VQE::preProcessing() {
     for (int B : pairs[A]) {
 
       E += 0.5 * twoBodyH(dipoleSum.row(A), dipoleSum.row(B),
-                          com.row(A) - com.row(B));
-      // E += 0.5 * twoBodyH(dipoleSum.row(B), dipoleSum.row(A), com.row(B) -
-      // com.row(A));
+                          centerOfMass.row(A) - centerOfMass.row(B));
+      // E += 0.5 * twoBodyH(dipoleSum.row(B), dipoleSum.row(A), centerOfMass.row(B) -
+      // centerOfMass.row(A));
 
       X_A(A) += 0.5 * twoBodyH(dipoleT.row(A), dipoleSum.row(B),
-                               com.row(A) - com.row(B));
+                               centerOfMass.row(A) - centerOfMass.row(B));
       X_A(A) += 0.5 * twoBodyH(dipoleSum.row(B), dipoleT.row(A),
-                               com.row(B) - com.row(A));
+                               centerOfMass.row(B) - centerOfMass.row(A));
 
       Z_A(A) += 0.5 * twoBodyH(dipoleSum.row(A), dipoleDiff.row(B),
-                               com.row(A) - com.row(B));
+                               centerOfMass.row(A) - centerOfMass.row(B));
       Z_A(A) += 0.5 * twoBodyH(dipoleDiff.row(B), dipoleSum.row(A),
-                               com.row(B) - com.row(A));
+                               centerOfMass.row(B) - centerOfMass.row(A));
 
       XX_AB(A, B) =
-          twoBodyH(dipoleT.row(A), dipoleT.row(B), com.row(A) - com.row(B));
+          twoBodyH(dipoleT.row(A), dipoleT.row(B), centerOfMass.row(A) - centerOfMass.row(B));
       XZ_AB(A, B) =
-          twoBodyH(dipoleT.row(A), dipoleDiff.row(B), com.row(A) - com.row(B));
+          twoBodyH(dipoleT.row(A), dipoleDiff.row(B), centerOfMass.row(A) - centerOfMass.row(B));
       ZX_AB(A, B) =
-          twoBodyH(dipoleDiff.row(A), dipoleT.row(B), com.row(A) - com.row(B));
+          twoBodyH(dipoleDiff.row(A), dipoleT.row(B), centerOfMass.row(A) - centerOfMass.row(B));
       ZZ_AB(A, B) = twoBodyH(dipoleDiff.row(A), dipoleDiff.row(B),
-                             com.row(A) - com.row(B));
+                             centerOfMass.row(A) - centerOfMass.row(B));
 
       hamiltonian += PauliOperator({{A, "X"}, {B, "X"}}, XX_AB(A, B));
       hamiltonian += PauliOperator({{A, "X"}, {B, "Z"}}, XZ_AB(A, B));
@@ -765,6 +762,9 @@ void MC_VQE::preProcessing() {
 
   // Done with the AIEM Hamiltonian just need a pointer for it
   observable = std::make_shared<PauliOperator>(hamiltonian);
+
+  logControl("Computed AIEM Hamiltonian [" + std::to_string(timer()) + " s]",
+             1);
 
   // CIS matrix elements in the nChromophore two-state basis
   CISHamiltonian = Eigen::MatrixXd::Zero(nStates, nStates);
@@ -802,6 +802,10 @@ void MC_VQE::preProcessing() {
   CISEnergies = EigenSolver.eigenvalues();
   CISEigenstates = EigenSolver.eigenvectors();
 
+  logControl("Computed CIS parameters [" + std::to_string(timer()) + " s]",
+             1);
+
+  CISGateAngles.resize(nChromophores, nStates);
   CISGateAngles = statePreparationAngles(CISEigenstates);
 
   // end of preProcessing

@@ -72,9 +72,17 @@ protected:
   // constructs entangler portion of MC-VQE circuit
   std::shared_ptr<CompositeInstruction> entanglerCircuit() const;
 
-  // processes quantum chemistry data and returns the Hamiltonian
-  // and the gates for state preparation
-  void preProcessing();
+  // reads quantum chemistry data
+  void readData();
+  Eigen::VectorXd energiesGS;
+  Eigen::VectorXd energiesES;
+  Eigen::MatrixXd dipoleGS;
+  Eigen::MatrixXd dipoleES;
+  Eigen::MatrixXd dipoleT;
+  Eigen::MatrixXd centerOfMass;
+
+  // compute AIEM Hamiltonian and CIS
+  void computeAIEMAndCIS();
 
   // gets angles from state coefficients
   Eigen::MatrixXd
@@ -114,6 +122,10 @@ protected:
 
   std::vector<Eigen::VectorXd> getCRS1PDM(const std::string termStr);
   std::vector<Eigen::MatrixXd> getCRS2PDM(const std::string termStr);
+  std::vector<Eigen::VectorXd> getMonomerGradient(const std::string, const std::vector<Eigen::VectorXd>);
+std::vector<Eigen::MatrixXd>
+getDimerDipoleGradient(const std::string,
+                               const std::vector<Eigen::MatrixXd>);
 
 public:
   bool initialize(const HeterogeneousMap &parameters) override;

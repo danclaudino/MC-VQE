@@ -2,6 +2,7 @@
 #include "mc-vqe.hpp"
 #include "xacc.hpp"
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 using namespace xacc;
@@ -10,70 +11,94 @@ using namespace xacc::quantum;
 namespace xacc {
 namespace algorithm {
 
-std::vector<Eigen::VectorXd>
-MC_VQE::getUnrelaxed1PDM(const std::string termStr,
-                         const std::vector<double> x) {
+// compute the unrelaxed 1PDM
+// Eq. 104/121
+std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
+MC_VQE::getUnrelaxed1PDM(const std::vector<double> x) {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
+  std::unordered_map<std::string, std::vector<Eigen::VectorXd>> unrelaxed1PDM;
 
-  std::vector<Eigen::VectorXd> unrelaxed1PDM;
-  for (int state = 0; state < nStates; state++) {
+  // loop over the single Pauli term
+  for (auto termStr : {"X", "Z"}) {
 
-    // prepare interference state and append entangler
-    auto kernel = statePreparationCircuit(gateAngles.col(state));
-    kernel->addVariables(entangler->getVariables());
-    for (auto &inst : entangler->getInstructions()) {
-      kernel->addInstruction(inst);
+    // each element of term1PDM is a vector of density matrix elements
+    // for each state given the termStr Pauli term
+    std::vector<Eigen::VectorXd> term1PDM;
+    // loop over the MC states
+    for (int state = 0; state < nStates; state++) {
+
+      // prepare interference state and append entangler
+      auto kernel = statePreparationCircuit(gateAngles.col(state));
+      kernel->addVariables(entangler->getVariables());
+      for (auto &inst : entangler->getInstructions()) {
+        kernel->addInstruction(inst);
+      }
+
+      // loop over chromophores and compute <term>
+      // stateDensityMatrix stores 1PDM elements for each chromophore in state
+      Eigen::VectorXd stateDensityMatrix = Eigen::VectorXd::Zero(nChromophores);
+      for (int A = 0; A < nChromophores; A++) {
+        auto term =
+            std::make_shared<PauliOperator>(PauliOperator({{A, termStr}}));
+        stateDensityMatrix(A) = vqeWrapper(term, kernel, x);
+      }
+      term1PDM.push_back(stateDensityMatrix);
     }
-
-    Eigen::VectorXd stateDensityMatrix = Eigen::VectorXd::Zero(nChromophores);
-    for (int A = 0; A < nChromophores; A++) {
-      auto term = PauliOperator({{A, termStr}});
-      stateDensityMatrix(A) =
-          vqeWrapper(std::make_shared<PauliOperator>(term), kernel, x);
-    }
-
-    unrelaxed1PDM.push_back(stateDensityMatrix);
+    unrelaxed1PDM.emplace(termStr, term1PDM);
   }
 
   return unrelaxed1PDM;
 }
 
-std::vector<Eigen::MatrixXd>
-MC_VQE::getUnrelaxed2PDM(const std::string termStr,
-                         const std::vector<double> x) {
+// compute the unrelaxed 2PDM
+// Eq. 105/122
+std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
+MC_VQE::getUnrelaxed2PDM(const std::vector<double> x) {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
+  std::unordered_map<std::string, std::vector<Eigen::MatrixXd>> unrelaxed2PDM;
 
-  std::vector<Eigen::MatrixXd> unrelaxed2PDM;
-  for (int state = 0; state < nStates; state++) {
+  // loop over the Pauli products
+  for (auto termStr : {"XX", "XZ", "ZX", "ZZ"}) {
 
-    // prepare interference state and append entangler
-    auto kernel = statePreparationCircuit(gateAngles.col(state));
-    kernel->addVariables(entangler->getVariables());
-    for (auto &inst : entangler->getInstructions()) {
-      kernel->addInstruction(inst);
-    }
+    // each element of term2PDM is a vector of density matrix elements
+    // for each state given the termStr Pauli term
+    std::vector<Eigen::MatrixXd> term2PDM;
+    for (int state = 0; state < nStates; state++) {
 
-    Eigen::VectorXd stateDensityMatrix = Eigen::VectorXd::Zero(nChromophores);
-    for (int A = 0; A < nChromophores; A++) {
-      for (int B : pairs[A]) {
-        std::string term1 = {termStr[0]}, term2 = {termStr[1]};
-        auto term = PauliOperator({{A, term1}, {B, term2}});
-        stateDensityMatrix(A, B) =
-            vqeWrapper(std::make_shared<PauliOperator>(term), kernel, x);
+      // prepare interference state and append entangler
+      auto kernel = statePreparationCircuit(gateAngles.col(state));
+      kernel->addVariables(entangler->getVariables());
+      for (auto &inst : entangler->getInstructions()) {
+        kernel->addInstruction(inst);
       }
-    }
 
-    unrelaxed2PDM.push_back(stateDensityMatrix);
+      // loop over chromophores and compute <term>
+      // stateDensityMatrix stores 1PDM elements for each chromophore in state
+      Eigen::MatrixXd stateDensityMatrix =
+          Eigen::MatrixXd::Zero(nChromophores, nChromophores);
+      for (int A = 0; A < nChromophores; A++) {
+        for (int B : pairs[A]) {
+          std::string term1 = {termStr[0]}, term2 = {termStr[1]};
+          auto term = std::make_shared<PauliOperator>(
+              PauliOperator({{A, term1}, {B, term2}}));
+          stateDensityMatrix(A, B) = vqeWrapper(term, kernel, x);
+        }
+      }
+      term2PDM.push_back(stateDensityMatrix);
+    }
+    unrelaxed2PDM.emplace(termStr, term2PDM);
   }
 
   return unrelaxed2PDM;
 }
 
-void MC_VQE::getVQEMultipliers(const std::vector<double> x) {
+// compute the VQE multipliers
+std::vector<Eigen::VectorXd>
+MC_VQE::getVQEMultipliers(const std::vector<double> x) {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
@@ -82,6 +107,7 @@ void MC_VQE::getVQEMultipliers(const std::vector<double> x) {
 
   std::vector<Eigen::VectorXd> gradients;
   // compute gradient for each state energy w.r.t. to entangler parameters
+  // Eq. 124
   for (int state = 0; state < nStates; state++) {
 
     // prepare interference state and append entangler
@@ -91,7 +117,6 @@ void MC_VQE::getVQEMultipliers(const std::vector<double> x) {
       kernel->addInstruction(inst);
     }
 
-    // Eq. 124
     Eigen::VectorXd stateDensityMatrix = Eigen::VectorXd::Zero(nParams);
     for (int g = 0; g < nParams; g++) {
       tmp_x = x;
@@ -117,8 +142,7 @@ void MC_VQE::getVQEMultipliers(const std::vector<double> x) {
       kernel->addInstruction(inst);
     }
 
-    // Eq. 124
-    // diagonal terms
+    // diagonal Hessian elements
     for (int g = 0; g < nParams; g++) {
 
       // Eq. 125 term #1
@@ -135,26 +159,29 @@ void MC_VQE::getVQEMultipliers(const std::vector<double> x) {
       hessian(g, g) -= vqeWrapper(observable, kernel, tmp_x);
     }
 
-    // off-diagonal terms
+    // off-diagonal Hessian elements
+    for (int g = 0; g < nParams; g++) {
+      for (int gp = g + 1; gp < nParams; gp++) {
 
-    for (int g = 1; g < nParams; g++) {
-      for (int gp = g; gp < nParams - 1; gp++) {
-
+        // Eq. 126 term #1
         tmp_x = x;
         tmp_x[g] += PI_4;
         tmp_x[gp] += PI_4;
         hessian(g, gp) += vqeWrapper(observable, kernel, tmp_x);
 
+        // Eq. 126 term #2
         tmp_x = x;
         tmp_x[g] += PI_4;
         tmp_x[gp] -= PI_4;
         hessian(g, gp) -= vqeWrapper(observable, kernel, tmp_x);
 
+        // Eq. 126 term #3
         tmp_x = x;
         tmp_x[g] -= PI_4;
         tmp_x[gp] += PI_4;
         hessian(g, gp) -= vqeWrapper(observable, kernel, tmp_x);
 
+        // Eq. 126 term #4
         tmp_x = x;
         tmp_x[g] -= PI_4;
         tmp_x[gp] -= PI_4;
@@ -164,67 +191,40 @@ void MC_VQE::getVQEMultipliers(const std::vector<double> x) {
       }
     }
   }
-
   hessian /= nStates;
 
+  // Eq. 127
+  std::vector<Eigen::VectorXd> vqeMultipliers;
   for (int state = 0; state < nStates; state++) {
     vqeMultipliers[state] =
         hessian.colPivHouseholderQr().solve(-gradients[state]);
   }
 
-  return;
+  return vqeMultipliers;
 }
 
-Eigen::VectorXd MC_VQE::getVQE1PDM(const std::string termStr,
-                                   const std::vector<double> x) {
+// compute CP-SA-VQE 1PDM
+// this is a state-averaged density matrix
+// hence all elements for a given state is the same
+// and instead of a vector<Eigen::Vector>
+// we have only an Eigen::Vector
+std::unordered_map<std::string, Eigen::VectorXd>
+MC_VQE::getVQE1PDM(const std::vector<double> x,
+                   const std::vector<Eigen::VectorXd> vqeMultipliers) {
 
   // Eq. 128
   auto nParams = nChromophores * NPARAMSENTANGLER;
   std::vector<double> tmp_x;
-  Eigen::VectorXd vqe1PDM = Eigen::VectorXd::Zero(nChromophores);
-  for (int A = 0; A < nChromophores; A++) {
+  std::unordered_map<std::string, Eigen::VectorXd> vqe1PDM;
+  for (auto termStr : {"X", "Z"}) {
 
-    auto term = std::make_shared<PauliOperator>(PauliOperator({{A, termStr}}));
-    for (int state = 0; state < nStates; state++) {
+    Eigen::VectorXd term1PDM = Eigen::VectorXd::Zero(nChromophores);
+    for (int A = 0; A < nChromophores; A++) {
 
-      // prepare interference state and append entangler
-      auto kernel = statePreparationCircuit(CISGateAngles.col(state));
-      kernel->addVariables(entangler->getVariables());
-      for (auto &inst : entangler->getInstructions()) {
-        kernel->addInstruction(inst);
-      }
-
-      Eigen::VectorXd theta_g = vqeMultipliers[state];
-      for (int g = 0; g < nParams; g++) {
-        tmp_x = x;
-        tmp_x[g] += PI_4;
-        vqe1PDM(A) += theta_g(g) * vqeWrapper(term, kernel, tmp_x);
-
-        tmp_x = x;
-        tmp_x[g] -= PI_4;
-        vqe1PDM(A) -= theta_g(g) * vqeWrapper(term, kernel, tmp_x);
-      }
-    }
-  }
-  vqe1PDM /= nStates;
-  return vqe1PDM;
-}
-
-Eigen::MatrixXd MC_VQE::getVQE2PDM(const std::string termStr,
-                                   const std::vector<double> x) {
-
-  // Eq. 128
-  auto nParams = nChromophores * NPARAMSENTANGLER;
-  std::vector<double> tmp_x;
-  Eigen::VectorXd vqe2PDM = Eigen::VectorXd::Zero(nChromophores);
-  for (int A = 0; A < nChromophores; A++) {
-
-    for (int B : pairs[A]) {
-
-      std::string term1 = {termStr[0]}, term2 = {termStr[1]};
-      auto term = std::make_shared<PauliOperator>(
-          PauliOperator({{A, term1}, {B, term2}}));
-
+      auto term =
+          std::make_shared<PauliOperator>(PauliOperator({{A, termStr}}));
+      
+      // sum over all states
       for (int state = 0; state < nStates; state++) {
 
         // prepare interference state and append entangler
@@ -234,26 +234,85 @@ Eigen::MatrixXd MC_VQE::getVQE2PDM(const std::string termStr,
           kernel->addInstruction(inst);
         }
 
-        Eigen::VectorXd theta_g = vqeMultipliers[state];
+        // sum over all VQE parameters
         for (int g = 0; g < nParams; g++) {
-
           tmp_x = x;
           tmp_x[g] += PI_4;
-          vqe2PDM(A) += theta_g(g) * vqeWrapper(term, kernel, tmp_x);
+          term1PDM(A) +=
+              vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
 
           tmp_x = x;
           tmp_x[g] -= PI_4;
-          vqe2PDM(A) -= theta_g(g) * vqeWrapper(term, kernel, tmp_x);
+          term1PDM(A) -=
+              vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
         }
       }
     }
+    // average over states
+    term1PDM /= nStates;
+    vqe1PDM.emplace(termStr, term1PDM);
   }
+  return vqe1PDM;
+}
 
-  vqe2PDM /= nStates;
+std::unordered_map<std::string, Eigen::MatrixXd>
+MC_VQE::getVQE2PDM(const std::vector<double> x,
+                   const std::vector<Eigen::VectorXd> vqeMultipliers) {
+
+  // Eq. 128
+  auto nParams = nChromophores * NPARAMSENTANGLER;
+  std::vector<double> tmp_x;
+  std::unordered_map<std::string, Eigen::MatrixXd> vqe2PDM;
+  for (auto termStr : {"XX", "XZ", "ZX", "ZZ"}) {
+
+    Eigen::MatrixXd term2PDM =
+        Eigen::MatrixXd::Zero(nChromophores, nChromophores);
+
+    for (int A = 0; A < nChromophores; A++) {
+
+      for (int B : pairs[A]) {
+
+        std::string term1 = {termStr[0]}, term2 = {termStr[1]};
+        auto term = std::make_shared<PauliOperator>(
+            PauliOperator({{A, term1}, {B, term2}}));
+
+        // sum over all states
+        for (int state = 0; state < nStates; state++) {
+
+          // prepare interference state and append entangler
+          auto kernel = statePreparationCircuit(CISGateAngles.col(state));
+          kernel->addVariables(entangler->getVariables());
+          for (auto &inst : entangler->getInstructions()) {
+            kernel->addInstruction(inst);
+          }
+
+          // sum over all VQE parameters
+          for (int g = 0; g < nParams; g++) {
+
+            tmp_x = x;
+            tmp_x[g] += PI_4;
+            term2PDM(A, B) +=
+                vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
+
+            tmp_x = x;
+            tmp_x[g] -= PI_4;
+            term2PDM(A, B) -=
+                vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
+          }
+        }
+      }
+    }
+    // average over states
+    term2PDM /= nStates;
+    vqe2PDM.emplace(termStr, term2PDM);
+  }
   return vqe2PDM;
 }
 
-void MC_VQE::getCRSMultipliers(const std::vector<double> x) {
+// compute multipliers w.r.t. contracted reference states
+std::vector<Eigen::MatrixXd>
+MC_VQE::getCRSMultipliers(const std::vector<double> x,
+                          const std::vector<Eigen::VectorXd> vqeMultipliers) {
 
   // Jacobian Eq. 62
   auto jacobian = [](int M, int I, Eigen::VectorXd coefficients) {
@@ -284,19 +343,25 @@ void MC_VQE::getCRSMultipliers(const std::vector<double> x) {
 
   // compute the terms separately then multiply
   // Eq. 131
+  // loop over multicontracted/interference states
   for (int mc = 0; mc < nStates; mc++) {
 
     Eigen::MatrixXd stateGrad = Eigen::MatrixXd::Zero(nStates, nStates);
 
+    // loop over CRSs states
     for (int crs = 0; crs < nStates; crs++) {
 
+      // loop over CIS states
       for (int ci = 0; ci < nStates; ci++) {
 
-        double grad = 0.0, first = 0.0;
+        double grad = 0.0;
 
+        // loop over CIS angles (M)
         for (int M = 0; M < nStates - 1; M++) {
 
+          double first = 0.0;
           if (M == 0) {
+            // Eq. 132
 
             stateGateAngles = gateAngles.col(mc);
             stateGateAngles(M) += PI_4;
@@ -367,8 +432,8 @@ void MC_VQE::getCRSMultipliers(const std::vector<double> x) {
     gradients.push_back(stateGrad);
   }
 
+  // Eq. 134
   auto nParams = nChromophores * NPARAMSENTANGLER;
-
   for (int mc = 0; mc < nStates; mc++) {
 
     Eigen::MatrixXd stateGrad = Eigen::MatrixXd::Zero(nStates, nStates);
@@ -475,137 +540,162 @@ void MC_VQE::getCRSMultipliers(const std::vector<double> x) {
     }
   }
 
-  // solve systems Eq. 136
-  // std::vector<Eigen::MatrixXd> multipliers;
+  // Eq. 136
+  std::vector<Eigen::MatrixXd> cpCRSMultipliers;
   for (int state = 0; state < nStates; state++) {
     cpCRSMultipliers.push_back(
         hessian[state].colPivHouseholderQr().solve(-gradients[state]));
   }
-  return;
+  return cpCRSMultipliers;
 }
 
-std::vector<Eigen::VectorXd> MC_VQE::getCRS1PDM(const std::string termStr) {
+// compute CRS contribution to the relaxed 1PDM
+std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
+MC_VQE::getCRS1PDM(const std::vector<Eigen::MatrixXd> cpCRSMultipliers) {
 
   // Compute D Eq. 138
-  std::vector<Eigen::VectorXd> CRS1PDM;
-  for (int state = 0; state < nStates; state++) {
+  std::unordered_map<std::string, std::vector<Eigen::VectorXd>> CRS1PDM;
 
-    Eigen::VectorXd stateDensityMatrix = Eigen::VectorXd::Zero(nChromophores);
-    for (int A = 0; A < nChromophores; A++) {
+  for (auto termStr : {"X", "Z"}) {
 
-      double D = 0.0;
-      for (int I = 0; I < nStates; I++) {
+    std::vector<Eigen::VectorXd> term1PDM;
+    for (int state = 0; state < nStates; state++) {
 
-        for (int Ip = 0; Ip < nStates; Ip++) {
+      Eigen::VectorXd stateDensityMatrix = Eigen::VectorXd::Zero(nChromophores);
+      for (int A = 0; A < nChromophores; A++) {
 
-          if (termStr == "Z" && I != Ip)
-            continue;
-          if (termStr == "X" && (I != 0 && Ip != 0))
-            continue;
+        double D = 0.0;
+        for (int I = 0; I < nStates; I++) {
 
-          for (int crs = 0; crs < nStates; crs++) {
-            double sum = 0.0;
-            for (int i = 0; i < nStates; i++) {
-              sum += cpCRSMultipliers[state](i, crs) * CISEigenstates(i, crs);
-            }
-            D += cpCRSMultipliers[state](I, crs) - sum * CISEigenstates(I, crs);
-            D *= CISEigenstates(Ip, crs);
+          for (int Ip = 0; Ip < nStates; Ip++) {
 
-            // Eq. 137
-            if (termStr == "Z" && Ip != 0) {
-              D *= -2.0;
+            if (termStr == "Z" && I != Ip)
+              continue;
+            if (termStr == "X" && (I != 0 && Ip != 0))
+              continue;
+
+            for (int crs = 0; crs < nStates; crs++) {
+              double sum = 0.0;
+              for (int i = 0; i < nStates; i++) {
+                sum += cpCRSMultipliers[state](i, crs) * CISEigenstates(i, crs);
+              }
+              D += cpCRSMultipliers[state](I, crs) -
+                   sum * CISEigenstates(I, crs);
+              D *= CISEigenstates(Ip, crs);
+
+              // Eq. 137
+              if (termStr == "Z" && Ip != 0) {
+                D *= -2.0;
+              }
             }
           }
         }
+        stateDensityMatrix(A) = D;
       }
-      stateDensityMatrix(A) = D;
+      term1PDM.push_back(stateDensityMatrix);
     }
-
-    CRS1PDM.push_back(stateDensityMatrix);
+    CRS1PDM.emplace(termStr, term1PDM);
   }
 
   return CRS1PDM;
 }
 
-std::vector<Eigen::MatrixXd> MC_VQE::getCRS2PDM(const std::string termStr) {
+// compute CRS contribution to the relaxed 2PDM
+std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
+MC_VQE::getCRS2PDM(const std::vector<Eigen::MatrixXd> cpCRSMultipliers) {
 
   // Compute D Eq. 138
-  std::vector<Eigen::MatrixXd> CRS2PDM;
-  for (int state = 0; state < nStates; state++) {
+  std::unordered_map<std::string, std::vector<Eigen::MatrixXd>> CRS2PDM;
 
-    Eigen::MatrixXd stateDensityMatrix =
-        Eigen::MatrixXd::Zero(nChromophores, nChromophores);
-    for (int A = 0; A < nChromophores; A++) {
+  for (auto termStr : {"XX", "XZ", "ZX", "ZZ"}) {
 
-      double D = 0.0;
-      for (int I = 0; I < nStates; I++) {
+    std::vector<Eigen::MatrixXd> term2PDM;
+    for (int state = 0; state < nStates; state++) {
 
-        for (int Ip = 0; Ip < nStates; Ip++) {
+      Eigen::MatrixXd stateDensityMatrix =
+          Eigen::MatrixXd::Zero(nChromophores, nChromophores);
+      for (int A = 0; A < nChromophores; A++) {
 
-          if (termStr == "ZZ" && I != Ip)
-            continue;
-          if (termStr == "XX" && I == Ip)
-            continue;
-          if ((termStr == "ZX" || termStr == "XZ") && (I != 0 && Ip != 0))
-            continue;
+        double D = 0.0;
+        for (int I = 0; I < nStates; I++) {
 
-          for (int crs = 0; crs < nStates; crs++) {
-            double sum = 0.0;
-            for (int i = 0; i < nStates; i++) {
-              sum += cpCRSMultipliers[state](i, crs) * CISEigenstates(i, crs);
-            }
-            D += cpCRSMultipliers[state](I, crs) - sum * CISEigenstates(I, crs);
-            D *= CISEigenstates(Ip, crs);
+          for (int Ip = 0; Ip < nStates; Ip++) {
 
-            // Eq. 137
-            if (termStr == "ZZ" && Ip != 0) {
-              D *= -2.0;
-            }
-            if (termStr == "ZX" || termStr == "XZ") {
-              D *= 0.5;
+            if (termStr == "ZZ" && I != Ip)
+              continue;
+            if (termStr == "XX" && I == Ip)
+              continue;
+            if ((termStr == "ZX" || termStr == "XZ") && (I != 0 && Ip != 0))
+              continue;
+
+            for (int crs = 0; crs < nStates; crs++) {
+              double sum = 0.0;
+              for (int i = 0; i < nStates; i++) {
+                sum += cpCRSMultipliers[state](i, crs) * CISEigenstates(i, crs);
+              }
+              D += cpCRSMultipliers[state](I, crs) -
+                   sum * CISEigenstates(I, crs);
+              D *= CISEigenstates(Ip, crs);
+
+              // Eq. 137
+              if (termStr == "ZZ" && Ip != 0) {
+                D *= -2.0;
+              }
+              if (termStr == "ZX" || termStr == "XZ") {
+                D *= 0.5;
+              }
             }
           }
         }
+        for (auto B : pairs[A]) {
+          stateDensityMatrix(A, B) = D;
+        }
       }
-      for (auto B : pairs[A]) {
-        stateDensityMatrix(A, B) = D;
-      }
+      term2PDM.push_back(stateDensityMatrix);
     }
-
-    CRS2PDM.push_back(stateDensityMatrix);
+    CRS2PDM.emplace(termStr, term2PDM);
   }
 
   return CRS2PDM;
 }
 
-std::vector<Eigen::VectorXd>
-MC_VQE::getMonomerGradient(const std::string termStr,
-                           const std::vector<Eigen::VectorXd> pdms) {
+std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
+MC_VQE::getMonomerGradient(
+    std::unordered_map<std::string, std::vector<Eigen::VectorXd>> _1PDM) {
 
-  std::vector<Eigen::VectorXd> monomerGradients;
+  std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
+      monomerGradients;
 
   // Eq. 143
-  for (int state = 0; state < nStates; state++) {
 
-    Eigen::VectorXd grad = Eigen::VectorXd::Constant(nChromophores, 0.5);
+  for (auto termStr : {"H", "P"}) {
 
-    if (termStr == "H") {
-      grad += 0.5 * pdms[state];
+    std::vector<Eigen::VectorXd> termGrad;
+
+    for (int state = 0; state < nStates; state++) {
+
+      Eigen::VectorXd grad = Eigen::VectorXd::Constant(nChromophores, 0.5);
+
+      if (termStr == "H") {
+        grad += 0.5 * _1PDM["Z"][state];
+      }
+
+      if (termStr == "P") {
+        grad -= 0.5 * _1PDM["Z"][state];
+      }
+
+      termGrad.push_back(grad);
     }
 
-    if (termStr == "P") {
-      grad -= 0.5 * pdms[state];
-    }
-
-    monomerGradients.push_back(grad);
+    monomerGradients.emplace(termStr, termGrad);
   }
 
   return monomerGradients;
 }
 
-std::vector<Eigen::MatrixXd>
-MC_VQE::getDimerDipoleGradient(const std::string termStr,
-                               const std::vector<Eigen::MatrixXd> pdms) {
+std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
+MC_VQE::getDimerInteractionGradient(
+    std::unordered_map<std::string, std::vector<Eigen::MatrixXd>> _2PDM) {
 
   // Eq. 147
   auto dipolePartial = [&](const Eigen::Vector3d mu, const Eigen::Vector3d r) {
@@ -613,6 +703,7 @@ MC_VQE::getDimerDipoleGradient(const std::string termStr,
     return (mu / std::pow(d, 3.0) - 3.0 * mu.dot(r) * r / std::pow(d, 5.0));
   };
 
+  // Eq. 148
   auto distancePartial = [&](const Eigen::Vector3d muA,
                              const Eigen::Vector3d muB,
                              const Eigen::Vector3d r) {
@@ -626,110 +717,131 @@ MC_VQE::getDimerDipoleGradient(const std::string termStr,
     return ret;
   };
 
-  std::vector<Eigen::MatrixXd> dimerGradients;
+  std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
+      dimerInteractionGradients;
 
-  // Eq. 143
-  for (int state = 0; state < nStates; state++) {
+  for (auto termStr : {"H", "P", "T", "R"}) {
 
-    Eigen::MatrixXd etaH = Eigen::VectorXd::Zero(nChromophores, 3);
-    Eigen::MatrixXd etaP = Eigen::VectorXd::Zero(nChromophores, 3);
-    Eigen::MatrixXd etaT = Eigen::VectorXd::Zero(nChromophores, 3);
-    Eigen::MatrixXd etaR = Eigen::VectorXd::Zero(nChromophores, 3);
+    std::vector<Eigen::MatrixXd> termEta;
+    for (int state = 0; state < nStates; state++) {
 
-    for (int A = 0; A < nChromophores; A++) {
+      Eigen::MatrixXd eta = Eigen::MatrixXd::Zero(nChromophores, 3);
+      for (int A = 0; A < nChromophores; A++) {
 
-      for (auto B : pairs[A]) {
+        for (auto B : pairs[A]) {
 
-        auto r = centerOfMass.row(A) - centerOfMass.row(B);
+          auto r = centerOfMass.row(A) - centerOfMass.row(B);
 
-        etaH.row(A) += dipolePartial(dipoleGS.row(B), r) / 4.0;
-        etaH.row(A) -= dipolePartial(dipoleES.row(B), r) / 4.0;
-        etaH.row(A) += dipolePartial(dipoleT.row(B), r) / 2.0;
+          // Eq. 145
+          if (termStr == "H") {
+            eta.row(A) += dipolePartial(dipoleGS.row(B), r) / 4.0 *
+                          _2PDM["ZZ"][state](A, B);
+            eta.row(A) -= dipolePartial(dipoleES.row(B), r) / 4.0 *
+                          _2PDM["ZZ"][state](A, B);
+            eta.row(A) += dipolePartial(dipoleT.row(B), r) / 2.0 *
+                          _2PDM["ZX"][state](A, B);
+            eta.row(B) += dipolePartial(dipoleGS.row(A), r) / 4.0 *
+                          _2PDM["ZZ"][state](A, B);
+            eta.row(B) -= dipolePartial(dipoleES.row(A), r) / 4.0 *
+                          _2PDM["ZZ"][state](A, B);
+            eta.row(B) += dipolePartial(dipoleT.row(A), r) / 2.0 *
+                          _2PDM["XZ"][state](A, B);
+          }
 
-        etaH.row(B) += dipolePartial(dipoleGS.row(A), r) / 4.0;
-        etaH.row(B) -= dipolePartial(dipoleES.row(A), r) / 4.0;
-        etaH.row(B) += dipolePartial(dipoleT.row(A), r) / 2.0;
+          // Eq. 145
+          if (termStr == "P") {
+            eta.row(A) -= dipolePartial(dipoleGS.row(B), r) / 4.0 *
+                          _2PDM["ZZ"][state](A, B);
+            eta.row(A) += dipolePartial(dipoleES.row(B), r) / 4.0 *
+                          _2PDM["ZZ"][state](A, B);
+            eta.row(A) -= dipolePartial(dipoleT.row(B), r) / 2.0 *
+                          _2PDM["ZX"][state](A, B);
+            eta.row(B) -= dipolePartial(dipoleGS.row(A), r) / 4.0 *
+                          _2PDM["ZZ"][state](A, B);
+            eta.row(B) += dipolePartial(dipoleES.row(A), r) / 4.0 *
+                          _2PDM["ZZ"][state](A, B);
+            eta.row(B) -= dipolePartial(dipoleT.row(A), r) / 2.0 *
+                          _2PDM["XZ"][state](A, B);
+          }
 
-        etaP.row(A) -= dipolePartial(dipoleGS.row(B), r) / 4.0;
-        etaP.row(A) += dipolePartial(dipoleES.row(B), r) / 4.0;
-        etaP.row(A) -= dipolePartial(dipoleT.row(B), r) / 2.0;
+          // Eq. 145
+          if (termStr == "T") {
+            eta.row(A) +=
+                dipolePartial(dipoleT.row(B), r) * _2PDM["XX"][state](A, B);
+            eta.row(A) += dipolePartial(dipoleGS.row(B), r) / 2.0 *
+                          _2PDM["XZ"][state](A, B);
+            eta.row(A) -= dipolePartial(dipoleES.row(B), r) / 2.0 *
+                          _2PDM["XZ"][state](A, B);
+            eta.row(B) +=
+                dipolePartial(dipoleT.row(A), r) * _2PDM["XX"][state](A, B);
+            eta.row(B) += dipolePartial(dipoleGS.row(A), r) / 2.0 *
+                          _2PDM["ZX"][state](A, B);
+            eta.row(B) -= dipolePartial(dipoleES.row(A), r) / 2.0 *
+                          _2PDM["ZX"][state](A, B);
+          }
 
-        etaP.row(B) -= dipolePartial(dipoleGS.row(A), r) / 4.0;
-        etaP.row(B) += dipolePartial(dipoleES.row(A), r) / 4.0;
-        etaP.row(B) -= dipolePartial(dipoleT.row(A), r) / 2.0;
+          // Eq. 146
+          if (termStr == "R") {
+            eta.row(A) -= distancePartial(dipoleGS.row(A), dipoleGS.row(B), r) /
+                          4.0 * _2PDM["ZZ"][state](A, B);
+            eta.row(B) += distancePartial(dipoleGS.row(B), dipoleGS.row(A), r) /
+                          4.0 * _2PDM["ZZ"][state](A, B);
 
-        etaT.row(A) += dipolePartial(dipoleT.row(B), r);
-        etaT.row(A) += dipolePartial(dipoleGS.row(B), r) / 2.0;
-        etaT.row(A) -= dipolePartial(dipoleES.row(B), r) / 2.0;
+            // HP
+            eta.row(A) += distancePartial(dipoleGS.row(A), dipoleES.row(B), r) /
+                          4.0 * _2PDM["ZZ"][state](A, B);
+            eta.row(B) -= distancePartial(dipoleGS.row(B), dipoleES.row(A), r) /
+                          4.0 * _2PDM["ZZ"][state](A, B);
 
-        etaT.row(B) += dipolePartial(dipoleT.row(A), r);
-        etaT.row(B) += dipolePartial(dipoleGS.row(A), r) / 2.0;
-        etaT.row(B) -= dipolePartial(dipoleES.row(A), r) / 2.0;
+            // HT
+            eta.row(A) -= distancePartial(dipoleGS.row(A), dipoleT.row(B), r) /
+                          2.0 * _2PDM["ZX"][state](A, B);
+            eta.row(B) += distancePartial(dipoleGS.row(B), dipoleT.row(A), r) /
+                          2.0 * _2PDM["ZX"][state](A, B);
 
-        // HH
-        etaR.row(A) -=
-            distancePartial(dipoleGS.row(A), dipoleGS.row(B), r) / 4.0;
-        etaR.row(B) +=
-            distancePartial(dipoleGS.row(B), dipoleGS.row(A), r) / 4.0;
+            // PP
+            eta.row(A) -= distancePartial(dipoleES.row(A), dipoleES.row(B), r) /
+                          4.0 * _2PDM["ZZ"][state](A, B);
+            eta.row(B) += distancePartial(dipoleES.row(B), dipoleES.row(A), r) /
+                          4.0 * _2PDM["ZZ"][state](A, B);
 
-        // HP
-        etaR.row(A) +=
-            distancePartial(dipoleGS.row(A), dipoleES.row(B), r) / 4.0;
-        etaR.row(B) -=
-            distancePartial(dipoleGS.row(B), dipoleES.row(A), r) / 4.0;
+            // PH
+            eta.row(A) += distancePartial(dipoleES.row(A), dipoleGS.row(B), r) /
+                          4.0 * _2PDM["ZZ"][state](A, B);
+            eta.row(B) -= distancePartial(dipoleES.row(B), dipoleGS.row(A), r) /
+                          4.0 * _2PDM["ZZ"][state](A, B);
 
-        // HT
-        etaR.row(A) -=
-            distancePartial(dipoleGS.row(A), dipoleT.row(B), r) / 2.0;
-        etaR.row(B) +=
-            distancePartial(dipoleGS.row(B), dipoleT.row(A), r) / 2.0;
+            // PT
+            eta.row(A) += distancePartial(dipoleES.row(A), dipoleT.row(B), r) /
+                          2.0 * _2PDM["ZX"][state](A, B);
+            eta.row(B) -= distancePartial(dipoleES.row(B), dipoleT.row(A), r) /
+                          2.0 * _2PDM["ZX"][state](A, B);
 
-        // PP
-        etaR.row(A) -=
-            distancePartial(dipoleES.row(A), dipoleES.row(B), r) / 4.0;
-        etaR.row(B) +=
-            distancePartial(dipoleES.row(B), dipoleES.row(A), r) / 4.0;
+            // TT
+            eta.row(A) -= distancePartial(dipoleT.row(A), dipoleT.row(B), r) *
+                          _2PDM["XX"][state](A, B);
+            eta.row(B) += distancePartial(dipoleT.row(B), dipoleT.row(A), r) *
+                          _2PDM["XX"][state](A, B);
 
-        // PH
-        etaR.row(A) +=
-            distancePartial(dipoleES.row(A), dipoleGS.row(B), r) / 4.0;
-        etaR.row(B) -=
-            distancePartial(dipoleES.row(B), dipoleGS.row(A), r) / 4.0;
+            // TH
+            eta.row(A) -= distancePartial(dipoleT.row(A), dipoleGS.row(B), r) /
+                          2.0 * _2PDM["XZ"][state](A, B);
+            eta.row(B) += distancePartial(dipoleT.row(B), dipoleGS.row(A), r) /
+                          2.0 * _2PDM["XZ"][state](A, B);
 
-        // PT
-        etaR.row(A) +=
-            distancePartial(dipoleES.row(A), dipoleT.row(B), r) / 2.0;
-        etaR.row(B) -=
-            distancePartial(dipoleES.row(B), dipoleT.row(A), r) / 2.0;
-
-        // TT
-        etaR.row(A) -= distancePartial(dipoleT.row(A), dipoleT.row(B), r);
-        etaR.row(B) += distancePartial(dipoleT.row(B), dipoleT.row(A), r);
-
-        // TH
-        etaR.row(A) -=
-            distancePartial(dipoleT.row(A), dipoleGS.row(B), r) / 2.0;
-        etaR.row(B) +=
-            distancePartial(dipoleT.row(B), dipoleGS.row(A), r) / 2.0;
-
-        // TP
-        etaR.row(A) +=
-            distancePartial(dipoleT.row(A), dipoleES.row(B), r) / 2.0;
-        etaR.row(B) -=
-            distancePartial(dipoleT.row(B), dipoleES.row(A), r) / 2.0;
-
-        etaH.row(A) *= 0.5 * pdms[state](A, B);
-        etaP.row(A) *= 0.5 * pdms[state](A, B);
-        etaT.row(A) *= 0.5 * pdms[state](A, B);
-        etaR.row(A) *= 0.5 * pdms[state](A, B);
-
-        etaH.row(B) *= 0.5 * pdms[state](A, B);
-        etaP.row(B) *= 0.5 * pdms[state](A, B);
-        etaT.row(B) *= 0.5 * pdms[state](A, B);
-        etaR.row(B) *= 0.5 * pdms[state](A, B);
+            // TP
+            eta.row(A) += distancePartial(dipoleT.row(A), dipoleES.row(B), r) /
+                          2.0 * _2PDM["XZ"][state](A, B);
+            eta.row(B) -= distancePartial(dipoleT.row(B), dipoleES.row(A), r) /
+                          2.0 * _2PDM["XZ"][state](A, B);
+          }
+        }
       }
+      termEta.push_back(eta);
     }
+    dimerInteractionGradients.emplace(termStr, termEta);
   }
+  return dimerInteractionGradients;
 }
 
 } // namespace algorithm

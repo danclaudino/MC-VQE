@@ -43,6 +43,7 @@ target_include_directories(${LIBRARY_NAME} PUBLIC . ${XACC_DIR}/include/eigen ${
 target_link_libraries(${LIBRARY_NAME} PUBLIC xacc::xacc xacc::quantum_gate xacc::fermion xacc::pauli)
 
 xacc_configure_plugin_rpath(mc-vqe)
+add_subdirectory(tests)
 
 install(FILES ${HEADERS} DESTINATION include)
 install(TARGETS ${LIBRARY_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/plugins)

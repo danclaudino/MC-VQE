@@ -15,4 +15,12 @@ $ cmake .. (-DXACC_DIR=/path/to/xacc/install)
 $ make install
 ```
 
-For the time being (until vqe.cpp is merged into xacc/master), copy `vqe/vqe.cpp` to `xacc/quantum/plugins/algorithms/vqe/` and rebuild XACC.
+Running on laptop (8 CPU cores):
+```bash
+OMP_PLACES=cores OMP_NUM_THREADS=2 OMP_DYNAMIC=false mpiexec -n 4 ./mc_vqe_example --n-virtual-qpus 2 --n-chromophores 18 --n-states 1 --opt-maxiter 1 --n-cycles 2 --exatn-log-level 2 --double-depth true
+```
+
+Running on Summit:
+```bash
+OMP_PLACES=cores OMP_NUM_THREADS=7 OMP_DYNAMIC=false jsrun -n 12 -r 6 -a 1 -c 7 -g 1 -brs ./mc_vqe_example --n-virtual-qpus 3 --n-chromophores 18 --n-states 1 --opt-maxiter 1 --n-cycles 2 --exatn-log-level 2 --double-depth true
+```

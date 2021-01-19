@@ -15,6 +15,8 @@ $ cmake .. (-DXACC_DIR=/path/to/xacc/install)
 $ make install
 ```
 
+A simple test (4 chromophores, 2 virtual QPUs) can be run with `ctest`. Be aware that this requires TNQVM, ExaTN, MPI to be installed in order to be executed, but should be able to compile even in their absence. 
+
 Running on laptop (8 CPU cores):
 ```bash
 OMP_PLACES=cores OMP_NUM_THREADS=2 OMP_DYNAMIC=false mpiexec -n 4 ./mc_vqe_example --n-virtual-qpus 2 --n-chromophores 18 --n-states 1 --opt-maxiter 1 --n-cycles 2 --exatn-log-level 2 --double-depth true

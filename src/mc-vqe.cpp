@@ -81,6 +81,8 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   }
 
   nStates = nChromophores + 1;
+  readData();
+  computeAIEMAndCIS();
 
   // Number of states to compute (< nChromophores + 1)
   // (For testing purposes)

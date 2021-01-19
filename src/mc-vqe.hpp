@@ -143,6 +143,7 @@ public:
   void execute(const std::shared_ptr<AcceleratorBuffer> buffer) const override;
   std::vector<double> execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                               const std::vector<double> &parameters) override;
+  void minimizeGradients(HeterogeneousMap &parameters, std::shared_ptr<AcceleratorBuffer> buffer);
   const std::string name() const override { return "mc-vqe"; }
   const std::string description() const override { return ""; }
   DEFINE_ALGORITHM_CLONE(MC_VQE)

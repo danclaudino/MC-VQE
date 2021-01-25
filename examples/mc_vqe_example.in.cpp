@@ -53,9 +53,9 @@ int main(int argc, char **argv) {
   
   if (data_path.empty()) {
     if (n_chromophores <= 18) {
-      data_path = "@CMAKE_SOURCE_DIR@/examples/18_qubit_datafile.txt";
+      data_path = "@CMAKE_SOURCE_DIR@/examples/";
     } else {
-      data_path = "@CMAKE_SOURCE_DIR@/examples/60_qubit_datafile.txt";
+      data_path = "@CMAKE_SOURCE_DIR@/examples/";
     }
   }
   auto optimizer = xacc::getOptimizer("nlopt", {{"nlopt-maxeval", opt_maxiter}});

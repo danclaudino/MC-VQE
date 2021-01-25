@@ -223,7 +223,7 @@ MC_VQE::getVQE1PDM(const std::vector<double> x,
 
       auto term =
           std::make_shared<PauliOperator>(PauliOperator({{A, termStr}}));
-      
+
       // sum over all states
       for (int state = 0; state < nStates; state++) {
 
@@ -734,105 +734,123 @@ MC_VQE::getDimerInteractionGradient(
 
           // Eq. 145
           if (termStr == "H") {
-            eta.row(A) += dipolePartial(dipoleGS.row(B), r) / 4.0 *
+            eta.row(A) += dipolePartial(groundStateDipoles.row(B), r) / 4.0 *
                           _2PDM["ZZ"][state](A, B);
-            eta.row(A) -= dipolePartial(dipoleES.row(B), r) / 4.0 *
+            eta.row(A) -= dipolePartial(excitedStateDipoles.row(B), r) / 4.0 *
                           _2PDM["ZZ"][state](A, B);
-            eta.row(A) += dipolePartial(dipoleT.row(B), r) / 2.0 *
+            eta.row(A) += dipolePartial(transitionDipoles.row(B), r) / 2.0 *
                           _2PDM["ZX"][state](A, B);
-            eta.row(B) += dipolePartial(dipoleGS.row(A), r) / 4.0 *
+            eta.row(B) += dipolePartial(groundStateDipoles.row(A), r) / 4.0 *
                           _2PDM["ZZ"][state](A, B);
-            eta.row(B) -= dipolePartial(dipoleES.row(A), r) / 4.0 *
+            eta.row(B) -= dipolePartial(excitedStateDipoles.row(A), r) / 4.0 *
                           _2PDM["ZZ"][state](A, B);
-            eta.row(B) += dipolePartial(dipoleT.row(A), r) / 2.0 *
+            eta.row(B) += dipolePartial(transitionDipoles.row(A), r) / 2.0 *
                           _2PDM["XZ"][state](A, B);
           }
 
           // Eq. 145
           if (termStr == "P") {
-            eta.row(A) -= dipolePartial(dipoleGS.row(B), r) / 4.0 *
+            eta.row(A) -= dipolePartial(groundStateDipoles.row(B), r) / 4.0 *
                           _2PDM["ZZ"][state](A, B);
-            eta.row(A) += dipolePartial(dipoleES.row(B), r) / 4.0 *
+            eta.row(A) += dipolePartial(excitedStateDipoles.row(B), r) / 4.0 *
                           _2PDM["ZZ"][state](A, B);
-            eta.row(A) -= dipolePartial(dipoleT.row(B), r) / 2.0 *
+            eta.row(A) -= dipolePartial(transitionDipoles.row(B), r) / 2.0 *
                           _2PDM["ZX"][state](A, B);
-            eta.row(B) -= dipolePartial(dipoleGS.row(A), r) / 4.0 *
+            eta.row(B) -= dipolePartial(groundStateDipoles.row(A), r) / 4.0 *
                           _2PDM["ZZ"][state](A, B);
-            eta.row(B) += dipolePartial(dipoleES.row(A), r) / 4.0 *
+            eta.row(B) += dipolePartial(excitedStateDipoles.row(A), r) / 4.0 *
                           _2PDM["ZZ"][state](A, B);
-            eta.row(B) -= dipolePartial(dipoleT.row(A), r) / 2.0 *
+            eta.row(B) -= dipolePartial(transitionDipoles.row(A), r) / 2.0 *
                           _2PDM["XZ"][state](A, B);
           }
 
           // Eq. 145
           if (termStr == "T") {
-            eta.row(A) +=
-                dipolePartial(dipoleT.row(B), r) * _2PDM["XX"][state](A, B);
-            eta.row(A) += dipolePartial(dipoleGS.row(B), r) / 2.0 *
+            eta.row(A) += dipolePartial(transitionDipoles.row(B), r) *
+                          _2PDM["XX"][state](A, B);
+            eta.row(A) += dipolePartial(groundStateDipoles.row(B), r) / 2.0 *
                           _2PDM["XZ"][state](A, B);
-            eta.row(A) -= dipolePartial(dipoleES.row(B), r) / 2.0 *
+            eta.row(A) -= dipolePartial(excitedStateDipoles.row(B), r) / 2.0 *
                           _2PDM["XZ"][state](A, B);
-            eta.row(B) +=
-                dipolePartial(dipoleT.row(A), r) * _2PDM["XX"][state](A, B);
-            eta.row(B) += dipolePartial(dipoleGS.row(A), r) / 2.0 *
+            eta.row(B) += dipolePartial(transitionDipoles.row(A), r) *
+                          _2PDM["XX"][state](A, B);
+            eta.row(B) += dipolePartial(groundStateDipoles.row(A), r) / 2.0 *
                           _2PDM["ZX"][state](A, B);
-            eta.row(B) -= dipolePartial(dipoleES.row(A), r) / 2.0 *
+            eta.row(B) -= dipolePartial(excitedStateDipoles.row(A), r) / 2.0 *
                           _2PDM["ZX"][state](A, B);
           }
 
           // Eq. 146
           if (termStr == "R") {
-            eta.row(A) -= distancePartial(dipoleGS.row(A), dipoleGS.row(B), r) /
+            eta.row(A) -= distancePartial(groundStateDipoles.row(A),
+                                          groundStateDipoles.row(B), r) /
                           4.0 * _2PDM["ZZ"][state](A, B);
-            eta.row(B) += distancePartial(dipoleGS.row(B), dipoleGS.row(A), r) /
+            eta.row(B) += distancePartial(groundStateDipoles.row(B),
+                                          groundStateDipoles.row(A), r) /
                           4.0 * _2PDM["ZZ"][state](A, B);
 
             // HP
-            eta.row(A) += distancePartial(dipoleGS.row(A), dipoleES.row(B), r) /
+            eta.row(A) += distancePartial(groundStateDipoles.row(A),
+                                          excitedStateDipoles.row(B), r) /
                           4.0 * _2PDM["ZZ"][state](A, B);
-            eta.row(B) -= distancePartial(dipoleGS.row(B), dipoleES.row(A), r) /
+            eta.row(B) -= distancePartial(groundStateDipoles.row(B),
+                                          excitedStateDipoles.row(A), r) /
                           4.0 * _2PDM["ZZ"][state](A, B);
 
             // HT
-            eta.row(A) -= distancePartial(dipoleGS.row(A), dipoleT.row(B), r) /
+            eta.row(A) -= distancePartial(groundStateDipoles.row(A),
+                                          transitionDipoles.row(B), r) /
                           2.0 * _2PDM["ZX"][state](A, B);
-            eta.row(B) += distancePartial(dipoleGS.row(B), dipoleT.row(A), r) /
+            eta.row(B) += distancePartial(groundStateDipoles.row(B),
+                                          transitionDipoles.row(A), r) /
                           2.0 * _2PDM["ZX"][state](A, B);
 
             // PP
-            eta.row(A) -= distancePartial(dipoleES.row(A), dipoleES.row(B), r) /
+            eta.row(A) -= distancePartial(excitedStateDipoles.row(A),
+                                          excitedStateDipoles.row(B), r) /
                           4.0 * _2PDM["ZZ"][state](A, B);
-            eta.row(B) += distancePartial(dipoleES.row(B), dipoleES.row(A), r) /
+            eta.row(B) += distancePartial(excitedStateDipoles.row(B),
+                                          excitedStateDipoles.row(A), r) /
                           4.0 * _2PDM["ZZ"][state](A, B);
 
             // PH
-            eta.row(A) += distancePartial(dipoleES.row(A), dipoleGS.row(B), r) /
+            eta.row(A) += distancePartial(excitedStateDipoles.row(A),
+                                          groundStateDipoles.row(B), r) /
                           4.0 * _2PDM["ZZ"][state](A, B);
-            eta.row(B) -= distancePartial(dipoleES.row(B), dipoleGS.row(A), r) /
+            eta.row(B) -= distancePartial(excitedStateDipoles.row(B),
+                                          groundStateDipoles.row(A), r) /
                           4.0 * _2PDM["ZZ"][state](A, B);
 
             // PT
-            eta.row(A) += distancePartial(dipoleES.row(A), dipoleT.row(B), r) /
+            eta.row(A) += distancePartial(excitedStateDipoles.row(A),
+                                          transitionDipoles.row(B), r) /
                           2.0 * _2PDM["ZX"][state](A, B);
-            eta.row(B) -= distancePartial(dipoleES.row(B), dipoleT.row(A), r) /
+            eta.row(B) -= distancePartial(excitedStateDipoles.row(B),
+                                          transitionDipoles.row(A), r) /
                           2.0 * _2PDM["ZX"][state](A, B);
 
             // TT
-            eta.row(A) -= distancePartial(dipoleT.row(A), dipoleT.row(B), r) *
+            eta.row(A) -= distancePartial(transitionDipoles.row(A),
+                                          transitionDipoles.row(B), r) *
                           _2PDM["XX"][state](A, B);
-            eta.row(B) += distancePartial(dipoleT.row(B), dipoleT.row(A), r) *
+            eta.row(B) += distancePartial(transitionDipoles.row(B),
+                                          transitionDipoles.row(A), r) *
                           _2PDM["XX"][state](A, B);
 
             // TH
-            eta.row(A) -= distancePartial(dipoleT.row(A), dipoleGS.row(B), r) /
+            eta.row(A) -= distancePartial(transitionDipoles.row(A),
+                                          groundStateDipoles.row(B), r) /
                           2.0 * _2PDM["XZ"][state](A, B);
-            eta.row(B) += distancePartial(dipoleT.row(B), dipoleGS.row(A), r) /
+            eta.row(B) += distancePartial(transitionDipoles.row(B),
+                                          groundStateDipoles.row(A), r) /
                           2.0 * _2PDM["XZ"][state](A, B);
 
             // TP
-            eta.row(A) += distancePartial(dipoleT.row(A), dipoleES.row(B), r) /
+            eta.row(A) += distancePartial(transitionDipoles.row(A),
+                                          excitedStateDipoles.row(B), r) /
                           2.0 * _2PDM["XZ"][state](A, B);
-            eta.row(B) -= distancePartial(dipoleT.row(B), dipoleES.row(A), r) /
+            eta.row(B) -= distancePartial(transitionDipoles.row(B),
+                                          excitedStateDipoles.row(A), r) /
                           2.0 * _2PDM["XZ"][state](A, B);
           }
         }

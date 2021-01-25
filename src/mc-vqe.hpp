@@ -22,6 +22,18 @@
 
 namespace xacc {
 namespace algorithm {
+
+class Importable : public Identifiable {
+public:
+  virtual void import(const int nChromophores, const std::string dataDir) = 0;
+  virtual Eigen::VectorXd getGroundStateEnergies() = 0;
+  virtual Eigen::VectorXd getExcitedStateEnergies() = 0;
+  virtual Eigen::MatrixXd getGroundStateDipoles() = 0;;
+  virtual Eigen::MatrixXd getExcitedStateDipoles() = 0;;
+  virtual Eigen::MatrixXd getTransitionDipoles() = 0;;
+  virtual Eigen::MatrixXd getCenterOfMass() = 0;
+};
+
 class MC_VQE : public Algorithm {
 protected:
   Optimizer *optimizer;
@@ -74,11 +86,11 @@ protected:
 
   // reads quantum chemistry data
   void readData();
-  Eigen::VectorXd energiesGS;
-  Eigen::VectorXd energiesES;
-  Eigen::MatrixXd dipoleGS;
-  Eigen::MatrixXd dipoleES;
-  Eigen::MatrixXd dipoleT;
+  Eigen::VectorXd groundStateEnergies;
+  Eigen::VectorXd excitedStateEnergies;
+  Eigen::MatrixXd groundStateDipoles;
+  Eigen::MatrixXd excitedStateDipoles;
+  Eigen::MatrixXd transitionDipoles;
   Eigen::MatrixXd centerOfMass;
 
   // compute AIEM Hamiltonian and CIS
@@ -132,7 +144,7 @@ protected:
   std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
       getMonomerGradient(
           std::unordered_map<std::string, std::vector<Eigen::VectorXd>>);
-          
+
   std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
       getDimerInteractionGradient(
           std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>);
@@ -143,7 +155,8 @@ public:
   void execute(const std::shared_ptr<AcceleratorBuffer> buffer) const override;
   std::vector<double> execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                               const std::vector<double> &parameters) override;
-  void minimizeGradients(HeterogeneousMap &parameters, std::shared_ptr<AcceleratorBuffer> buffer);
+  void minimizeGradients(HeterogeneousMap &parameters,
+                         std::shared_ptr<AcceleratorBuffer> buffer);
   const std::string name() const override { return "mc-vqe"; }
   const std::string description() const override { return ""; }
   DEFINE_ALGORITHM_CLONE(MC_VQE)

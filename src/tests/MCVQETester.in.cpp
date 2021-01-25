@@ -30,7 +30,7 @@ TEST(MCVQETester, checkMCVQE) {
   xacc::setLoggingLevel(exatnLogLevel);
 
   // path to data file
-  auto data_path = "@CMAKE_SOURCE_DIR@/examples/18_qubit_datafile.txt";
+  auto data_path = "@CMAKE_SOURCE_DIR@/examples/";
 
   // optimizer set for a single optimization iteration
   auto optimizer = xacc::getOptimizer("nlopt", {{"nlopt-maxeval", 1}});

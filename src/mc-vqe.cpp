@@ -19,6 +19,7 @@
 #include "xacc_service.hpp"
 #include <Eigen/Eigenvalues>
 #include <iomanip>
+#include <memory>
 
 using namespace xacc;
 using namespace xacc::quantum;
@@ -81,7 +82,34 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   }
 
   nStates = nChromophores + 1;
-  readData();
+
+  // import quantum chemistry data
+  /*
+  std::string import;
+  if (parameters.stringExists("import")) {
+    import = parameters.getString("import");
+  }
+*/
+  // here we get an instance of the Importable class and import the data
+  // if this is not provided, it defaults to the test implementation
+  std::shared_ptr<xacc::algorithm::Importable> import;
+  if (parameters.stringExists("import")) {
+    import = xacc::getService<xacc::algorithm::Importable>(
+        parameters.getString("import"));
+  } else {
+    import =
+        xacc::getService<xacc::algorithm::Importable>("import-from-test-file");
+  }
+
+  import->import(nChromophores, dataPath);
+  groundStateEnergies = import->getGroundStateEnergies();
+  excitedStateEnergies = import->getExcitedStateEnergies();
+  groundStateDipoles = import->getGroundStateDipoles();
+  excitedStateDipoles = import->getExcitedStateDipoles();
+  transitionDipoles = import->getTransitionDipoles();
+  centerOfMass = import->getCenterOfMass();
+
+  //readData();
   computeAIEMAndCIS();
 
   // Number of states to compute (< nChromophores + 1)
@@ -602,17 +630,17 @@ void MC_VQE::readData() {
    */
 
   // instantiate necessary ingredients for quantum chemistry input
-  // energiesGS = ground state energies
-  // energiesES = excited state energies
-  // dipoleGS = ground state dipole moment vectors
-  // dipoleES = excited state dipole moment vectors
-  // dipoleT = transition (between ground and excited states) dipole moment
+  // groundStateEnergies = ground state energies
+  // excitedStateEnergies = excited state energies
+  // groundStateDipoles = ground state dipole moment vectors
+  // excitedStateDipoles = excited state dipole moment vectors
+  // transitionDipoles = transition (between ground and excited states) dipole moment
   // com = center of mass of each chromophore
-  energiesGS = Eigen::VectorXd::Zero(nChromophores);
-  energiesES = Eigen::VectorXd::Zero(nChromophores);
-  dipoleGS = Eigen::MatrixXd::Zero(nChromophores, 3);
-  dipoleES = Eigen::MatrixXd::Zero(nChromophores, 3);
-  dipoleT = Eigen::MatrixXd::Zero(nChromophores, 3);
+  groundStateEnergies = Eigen::VectorXd::Zero(nChromophores);
+  excitedStateEnergies = Eigen::VectorXd::Zero(nChromophores);
+  groundStateDipoles = Eigen::MatrixXd::Zero(nChromophores, 3);
+  excitedStateDipoles = Eigen::MatrixXd::Zero(nChromophores, 3);
+  transitionDipoles = Eigen::MatrixXd::Zero(nChromophores, 3);
   centerOfMass = Eigen::MatrixXd::Zero(nChromophores, 3);
 
   std::ifstream file(dataPath);
@@ -629,9 +657,9 @@ void MC_VQE::readData() {
     // this is just the number label of the chromophore
     std::getline(file, line);
     std::getline(file, line);
-    energiesGS(A) = std::stod(line.substr(line.find(":") + 1));
+    groundStateEnergies(A) = std::stod(line.substr(line.find(":") + 1));
     std::getline(file, line);
-    energiesES(A) = std::stod(line.substr(line.find(":") + 1));
+    excitedStateEnergies(A) = std::stod(line.substr(line.find(":") + 1));
 
     std::getline(file, line);
     tmp = line.substr(line.find(":") + 1);
@@ -647,7 +675,7 @@ void MC_VQE::readData() {
     std::stringstream gsDipoleStream(tmp);
     xyz = 0;
     while (std::getline(gsDipoleStream, comp, ',')) {
-      dipoleGS(A, xyz) = std::stod(comp);
+      groundStateDipoles(A, xyz) = std::stod(comp);
       xyz++;
     }
 
@@ -656,7 +684,7 @@ void MC_VQE::readData() {
     std::stringstream esDipoleStream(tmp);
     xyz = 0;
     while (std::getline(esDipoleStream, comp, ',')) {
-      dipoleES(A, xyz) = std::stod(comp);
+      excitedStateDipoles(A, xyz) = std::stod(comp);
       xyz++;
     }
 
@@ -665,15 +693,15 @@ void MC_VQE::readData() {
     std::stringstream tDipoleStream(tmp);
     xyz = 0;
     while (std::getline(tDipoleStream, comp, ',')) {
-      dipoleT(A, xyz) = std::stod(comp);
+      transitionDipoles(A, xyz) = std::stod(comp);
       xyz++;
     }
   }
   file.close();
 
   centerOfMass *= ANGSTROM2BOHR; // angstrom to bohr
-  dipoleGS *= DEBYE2AU; // D to a.u.
-  dipoleES *= DEBYE2AU;
+  groundStateDipoles *= DEBYE2AU;          // D to a.u.
+  excitedStateDipoles *= DEBYE2AU;
 
   return;
 }
@@ -706,14 +734,14 @@ void MC_VQE::computeAIEMAndCIS() {
   }
 
   // Ref2 Eq. 20 and 21
-  //auto S_A = (energiesGS + energiesES) / 2.0;
-  //auto D_A = (energiesGS - energiesES) / 2.0;
+  // auto S_A = (groundStateEnergies + excitedStateEnergies) / 2.0;
+  // auto D_A = (groundStateEnergies - excitedStateEnergies) / 2.0;
   // sum of dipole moments, coordinate-wise
-  auto dipoleSum = (dipoleGS + dipoleES) / 2.0;
+  auto dipoleSum = (groundStateDipoles + excitedStateDipoles) / 2.0;
   // difference of dipole moments, coordinate-wise
-  auto dipoleDiff = (dipoleGS - dipoleES) / 2.0;
+  auto dipoleDiff = (groundStateDipoles - excitedStateDipoles) / 2.0;
 
-  Eigen::VectorXd Z_A = (energiesGS - energiesES) / 2.0;
+  Eigen::VectorXd Z_A = (groundStateEnergies - excitedStateEnergies) / 2.0;
   Eigen::VectorXd X_A = Eigen::VectorXd::Zero(nChromophores);
   Eigen::MatrixXd XX_AB = Eigen::MatrixXd::Zero(nChromophores, nChromophores);
   Eigen::MatrixXd XZ_AB = Eigen::MatrixXd::Zero(nChromophores, nChromophores);
@@ -729,12 +757,12 @@ void MC_VQE::computeAIEMAndCIS() {
 
       E += 0.5 * twoBodyH(dipoleSum.row(A), dipoleSum.row(B),
                           centerOfMass.row(A) - centerOfMass.row(B));
-      // E += 0.5 * twoBodyH(dipoleSum.row(B), dipoleSum.row(A), centerOfMass.row(B) -
-      // centerOfMass.row(A));
+      // E += 0.5 * twoBodyH(dipoleSum.row(B), dipoleSum.row(A),
+      // centerOfMass.row(B) - centerOfMass.row(A));
 
-      X_A(A) += 0.5 * twoBodyH(dipoleT.row(A), dipoleSum.row(B),
+      X_A(A) += 0.5 * twoBodyH(transitionDipoles.row(A), dipoleSum.row(B),
                                centerOfMass.row(A) - centerOfMass.row(B));
-      X_A(A) += 0.5 * twoBodyH(dipoleSum.row(B), dipoleT.row(A),
+      X_A(A) += 0.5 * twoBodyH(dipoleSum.row(B), transitionDipoles.row(A),
                                centerOfMass.row(B) - centerOfMass.row(A));
 
       Z_A(A) += 0.5 * twoBodyH(dipoleSum.row(A), dipoleDiff.row(B),
@@ -742,12 +770,12 @@ void MC_VQE::computeAIEMAndCIS() {
       Z_A(A) += 0.5 * twoBodyH(dipoleDiff.row(B), dipoleSum.row(A),
                                centerOfMass.row(B) - centerOfMass.row(A));
 
-      XX_AB(A, B) =
-          twoBodyH(dipoleT.row(A), dipoleT.row(B), centerOfMass.row(A) - centerOfMass.row(B));
-      XZ_AB(A, B) =
-          twoBodyH(dipoleT.row(A), dipoleDiff.row(B), centerOfMass.row(A) - centerOfMass.row(B));
-      ZX_AB(A, B) =
-          twoBodyH(dipoleDiff.row(A), dipoleT.row(B), centerOfMass.row(A) - centerOfMass.row(B));
+      XX_AB(A, B) = twoBodyH(transitionDipoles.row(A), transitionDipoles.row(B),
+                             centerOfMass.row(A) - centerOfMass.row(B));
+      XZ_AB(A, B) = twoBodyH(transitionDipoles.row(A), dipoleDiff.row(B),
+                             centerOfMass.row(A) - centerOfMass.row(B));
+      ZX_AB(A, B) = twoBodyH(dipoleDiff.row(A), transitionDipoles.row(B),
+                             centerOfMass.row(A) - centerOfMass.row(B));
       ZZ_AB(A, B) = twoBodyH(dipoleDiff.row(A), dipoleDiff.row(B),
                              centerOfMass.row(A) - centerOfMass.row(B));
 
@@ -804,8 +832,7 @@ void MC_VQE::computeAIEMAndCIS() {
   CISEnergies = EigenSolver.eigenvalues();
   CISEigenstates = EigenSolver.eigenvectors();
 
-  logControl("Computed CIS parameters [" + std::to_string(timer()) + " s]",
-             1);
+  logControl("Computed CIS parameters [" + std::to_string(timer()) + " s]", 1);
 
   CISGateAngles.resize(nChromophores, nStates);
   CISGateAngles = statePreparationAngles(CISEigenstates);
@@ -886,4 +913,4 @@ double MC_VQE::timer() const {
 } // namespace algorithm
 } // namespace xacc
 
-REGISTER_ALGORITHM(xacc::algorithm::MC_VQE)
+// REGISTER_ALGORITHM(xacc::algorithm::MC_VQE)

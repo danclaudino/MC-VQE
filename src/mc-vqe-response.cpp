@@ -693,6 +693,12 @@ MC_VQE::getMonomerGradient(
   return monomerGradients;
 }
 
+
+/*
+
+
+I'll come back here later
+
 std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getDimerInteractionGradient(
     std::unordered_map<std::string, std::vector<Eigen::MatrixXd>> _2PDM) {
@@ -861,6 +867,8 @@ MC_VQE::getDimerInteractionGradient(
   }
   return dimerInteractionGradients;
 }
+
+*/
 
 } // namespace algorithm
 } // namespace xacc

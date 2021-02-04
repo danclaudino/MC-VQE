@@ -9,16 +9,18 @@
  *
  * Contributors:
  *   Daniel Claudino - initial API and implementation
- *******************************************************************************/
+ ******************************************************************************/
 #ifndef XACC_ALGORITHM_MC_VQE_HPP_
 #define XACC_ALGORITHM_MC_VQE_HPP_
 
+#include "Monomer.hpp"
 #include "Algorithm.hpp"
 #include "xacc.hpp"
 #include "xacc_service.hpp"
 #include <Eigen/Dense>
 #include <chrono>
 #include <fstream>
+#include <vector>
 
 namespace xacc {
 namespace algorithm {
@@ -26,12 +28,7 @@ namespace algorithm {
 class Importable : public Identifiable {
 public:
   virtual void import(const int nChromophores, const std::string dataDir) = 0;
-  virtual Eigen::VectorXd getGroundStateEnergies() = 0;
-  virtual Eigen::VectorXd getExcitedStateEnergies() = 0;
-  virtual Eigen::MatrixXd getGroundStateDipoles() = 0;;
-  virtual Eigen::MatrixXd getExcitedStateDipoles() = 0;;
-  virtual Eigen::MatrixXd getTransitionDipoles() = 0;;
-  virtual Eigen::MatrixXd getCenterOfMass() = 0;
+  virtual std::vector<Monomer> getMonomers() = 0;
 };
 
 class MC_VQE : public Algorithm {
@@ -41,6 +38,8 @@ protected:
   HeterogeneousMap parameters;
 
   // MC-VQE variables
+
+  std::vector<Monomer> monomers;
 
   // number of chromophores
   int nChromophores;
@@ -76,6 +75,10 @@ protected:
   mutable std::ofstream logFile;
   // valid chromophore pairs (nearest neighbor)
   std::map<int, std::vector<int>> pairs;
+  void setPairs();
+    // compute AIEM Hamiltonian and CIS
+  void computeCIS();
+  void computeAIEM();
 
   // constructs CIS state preparation circiuit
   std::shared_ptr<CompositeInstruction>
@@ -83,18 +86,6 @@ protected:
 
   // constructs entangler portion of MC-VQE circuit
   std::shared_ptr<CompositeInstruction> entanglerCircuit() const;
-
-  // reads quantum chemistry data
-  void readData();
-  Eigen::VectorXd groundStateEnergies;
-  Eigen::VectorXd excitedStateEnergies;
-  Eigen::MatrixXd groundStateDipoles;
-  Eigen::MatrixXd excitedStateDipoles;
-  Eigen::MatrixXd transitionDipoles;
-  Eigen::MatrixXd centerOfMass;
-
-  // compute AIEM Hamiltonian and CIS
-  void computeAIEMAndCIS();
 
   // gets angles from state coefficients
   Eigen::MatrixXd

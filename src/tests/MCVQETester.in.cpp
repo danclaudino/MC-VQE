@@ -23,10 +23,10 @@ using namespace xacc;
 TEST(MCVQETester, checkMCVQE) {
 
   std::vector<std::string> arguments(argv + 1, argv + argc);
-  int exatnLogLevel = 2, mcvqeLogLevel = 2, n_chromophores = 4, n_states = 1,
+  int exatnLogLevel = 2, mcvqeLogLevel = 0, n_chromophores = 4, n_states = 2,
       n_cycles = 1;
 
-  xacc::set_verbose(true);
+  //xacc::set_verbose(true);
   xacc::setLoggingLevel(exatnLogLevel);
 
   // path to data file
@@ -40,6 +40,7 @@ TEST(MCVQETester, checkMCVQE) {
   hetMap.insert("tnqvm-visitor", "exatn");
   hetMap.insert("exatn-buffer-size-gb", 2);
   hetMap.insert("exp-val-by-conjugate", true);
+  hetMap.insert("sim-type", "statevector");
 
   auto accelerator = xacc::getAccelerator("tnqvm", hetMap);
 
@@ -54,11 +55,13 @@ TEST(MCVQETester, checkMCVQE) {
                       {"interference", false},
                       {"n-states", n_states},
                       {"data-path", data_path},
-                      {"cyclic", true},
+                      {"cyclic", false},
                       {"log-level", mcvqeLogLevel},
                       {"tnqvm-log", true},
                       {"nChromophores", n_chromophores}});
-
+auto q = xacc::qalloc(n_chromophores);
+mc_vqe->execute(q);
+/*
   auto q = xacc::qalloc(n_chromophores);
   for (int i = 0; i < 2; i++) {
     xacc::ScopeTimer timer("mpi_timing", false);
@@ -77,8 +80,10 @@ TEST(MCVQETester, checkMCVQE) {
       std::cout << "Runtime: " << run_time << " ms.\n";
     }
   }
+  
    EXPECT_NEAR(-0.142685, q->getInformation("opt-average-energy").as<double>(),
    1e-4);
+   */
 }
 
 int main(int argc, char **argv) {

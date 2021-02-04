@@ -16,6 +16,7 @@
 #include "mc-vqe.hpp"
 #include "xacc.hpp"
 #include "xacc_plugin.hpp"
+#include <vector>
 
 namespace xacc {
 namespace algorithm {
@@ -25,13 +26,7 @@ namespace algorithm {
 // top_dir/examples/60_qubit_datafile.txt
 class ImportFromTestFile : public Importable {
 private:
-  Eigen::VectorXd groundStateEnergies;
-  Eigen::VectorXd excitedStateEnergies;
-  Eigen::MatrixXd groundStateDipoles;
-  Eigen::MatrixXd excitedStateDipoles;
-  Eigen::MatrixXd transitionDipoles;
-  // center of mass
-  Eigen::MatrixXd centerOfMass;
+  std::vector<Monomer> monomers;
 
   // angstrom to bohr
   const double ANGSTROM2BOHR = 1.8897161646320724;
@@ -40,16 +35,6 @@ private:
 
 public:
   void import(const int nChromophores, const std::string dataDir) override {
-
-    // instantiate necessary ingredients for quantum chemistry input
-    // com = center of mass of each chromophore
-    groundStateEnergies = Eigen::VectorXd::Zero(nChromophores);
-    excitedStateEnergies = Eigen::VectorXd::Zero(nChromophores);
-    groundStateDipoles = Eigen::MatrixXd::Zero(nChromophores, 3);
-    excitedStateDipoles = Eigen::MatrixXd::Zero(nChromophores, 3);
-    transitionDipoles = Eigen::MatrixXd::Zero(nChromophores, 3);
-    centerOfMass = Eigen::MatrixXd::Zero(nChromophores, 3);
-
     std::string dataPath;
     if (nChromophores <= 18) {
       dataPath = dataDir + "18_qubit_datafile.txt";
@@ -64,6 +49,7 @@ public:
     }
 
     std::string line, tmp, comp;
+    Eigen::Vector3d tmpVec;
     int xyz, start;
     // scans output file and retrieve data
     for (int A = 0; A < nChromophores; A++) {
@@ -71,74 +57,55 @@ public:
       // this is just the number label of the chromophore
       std::getline(file, line);
       std::getline(file, line);
-      groundStateEnergies(A) = std::stod(line.substr(line.find(":") + 1));
+      auto groundStateEnergy = std::stod(line.substr(line.find(":") + 1));
       std::getline(file, line);
-      excitedStateEnergies(A) = std::stod(line.substr(line.find(":") + 1));
+      auto excitedStateEnergy = std::stod(line.substr(line.find(":") + 1));
 
       std::getline(file, line);
       tmp = line.substr(line.find(":") + 1);
-      std::stringstream centerOfMasstream(tmp);
+      std::stringstream centerOfMassStream(tmp);
+      Eigen::Vector3d centerOfMass = Eigen::Vector3d::Zero();
       xyz = 0;
-      while (std::getline(centerOfMasstream, comp, ',')) {
-        centerOfMass(A, xyz) = std::stod(comp);
-        xyz++;
+      while (std::getline(centerOfMassStream, comp, ',')) {
+        centerOfMass(xyz++) = std::stod(comp) * ANGSTROM2BOHR;
       }
 
       std::getline(file, line);
       tmp = line.substr(line.find(":") + 1);
+      Eigen::Vector3d groundStateDipole = Eigen::Vector3d::Zero();
       std::stringstream gsDipoleStream(tmp);
       xyz = 0;
       while (std::getline(gsDipoleStream, comp, ',')) {
-        groundStateDipoles(A, xyz) = std::stod(comp);
-        xyz++;
+        groundStateDipole(xyz++) = std::stod(comp) * DEBYE2AU;
       }
 
       std::getline(file, line);
       tmp = line.substr(line.find(":") + 1);
       std::stringstream esDipoleStream(tmp);
+      Eigen::Vector3d excitedStateDipole = Eigen::Vector3d::Zero();
       xyz = 0;
       while (std::getline(esDipoleStream, comp, ',')) {
-        excitedStateDipoles(A, xyz) = std::stod(comp);
-        xyz++;
+        excitedStateDipole(xyz++) = std::stod(comp) * DEBYE2AU;
       }
 
       std::getline(file, line);
       tmp = line.substr(line.find(":") + 1);
       std::stringstream tDipoleStream(tmp);
       xyz = 0;
+      Eigen::Vector3d transitionDipole = Eigen::Vector3d::Zero();
       while (std::getline(tDipoleStream, comp, ',')) {
-        transitionDipoles(A, xyz) = std::stod(comp);
-        xyz++;
+        transitionDipole(xyz++) = std::stod(comp);
       }
+
+      Monomer m(groundStateEnergy, excitedStateEnergy, groundStateDipole,
+                excitedStateDipole, transitionDipole, centerOfMass);
+      monomers.push_back(m);
     }
     file.close();
-
-    centerOfMass *= ANGSTROM2BOHR;
-    groundStateDipoles *= DEBYE2AU;
-    excitedStateDipoles *= DEBYE2AU;
-
     return;
   }
 
-  Eigen::VectorXd getGroundStateEnergies() override {
-    return groundStateEnergies;
-  }
-
-  Eigen::VectorXd getExcitedStateEnergies() override {
-    return excitedStateEnergies;
-  }
-
-  Eigen::MatrixXd getGroundStateDipoles() override {
-    return groundStateDipoles;
-  }
-
-  Eigen::MatrixXd getExcitedStateDipoles() override {
-    return excitedStateDipoles;
-  }
-
-  Eigen::MatrixXd getTransitionDipoles() override { return transitionDipoles; }
-
-  Eigen::MatrixXd getCenterOfMass() override { return centerOfMass; }
+  std::vector<Monomer> getMonomers() override { return monomers; }
 
   const std::string name() const override { return "import-from-test-file"; }
   const std::string description() const override { return ""; }
@@ -147,5 +114,3 @@ public:
 } // namespace algorithm
 } // namespace xacc
 #endif
-
-// REGISTER_PLUGIN(xacc::ImportReadFromFile, xacc::Importable)

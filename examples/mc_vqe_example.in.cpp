@@ -8,7 +8,7 @@ int main(int argc, char **argv) {
   xacc::Initialize(argc, argv);
 
   std::vector<std::string> arguments(argv + 1, argv + argc);
-  int n_virt_qpus = 1, exatnLogLevel = 2, mcvqeLogLevel = 0, n_chromophores = 4,
+  int n_virt_qpus = 1, exatnLogLevel = 0, mcvqeLogLevel = 0, n_chromophores = 4,
       exatnBufferSize = 4, opt_maxiter = 1, n_states = 1, n_cycles = 1,
       max_qubit = 8;
   std::string acc = "tnqvm", data_path;

@@ -30,7 +30,7 @@ OMP_PLACES=cores OMP_NUM_THREADS=7 OMP_DYNAMIC=false jsrun -n 12 -r 6 -a 1 -c 7 
 The following can be added to the command line to control the execution:
 * `--n-chromophores`: number of chromophores/qubits
 * `--n-virtual-qpus`: number of virtual QPUs (defaults to 1)
-* `--exatn-log-level`: controls the level of printing/logging in XACC all the way through TNQVM and ExaTN (defaults to 1)
+* `--exatn-log-level`: controls the level of printing/logging in XACC all the way through TNQVM and ExaTN (defaults to 0)
 * `--mcvqe-log-level`: controls the level of printing/logging from the MC-VQE algorithm, such as state energies, state preparation circuits, etc. (defaults to 0 (prints nothing))
 * `--print-tnqvm-log`: controls whether to print TNQVM logging (defaults to `false`)
 * `--exatn-buffer-size`: ExaTN memomory buffer size in GiB (defaults to 4)

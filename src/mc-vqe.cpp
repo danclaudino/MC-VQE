@@ -103,7 +103,7 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   // compute Hamiltonians
   computeCIS();
   computeAIEM();
- 
+
   // TODO : set up circuit gradients
 
   // Number of states to compute
@@ -524,7 +524,6 @@ void MC_VQE::computeCIS() {
                                   monomers[A].getXZ(monomers[B]) +
                                   monomers[B].getZX(monomers[A]);
     }
-    CISHamiltonian(0, A + 1) = CISHamiltonian(A + 1, 0);
   }
 
   // singles-singles off-diagonal

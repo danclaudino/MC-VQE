@@ -13,13 +13,16 @@
 #ifndef XACC_ALGORITHM_MC_VQE_HPP_
 #define XACC_ALGORITHM_MC_VQE_HPP_
 
-#include "Monomer.hpp"
 #include "Algorithm.hpp"
+#include "AlgorithmGradientStrategy.hpp"
+#include "Monomer.hpp"
 #include "xacc.hpp"
 #include "xacc_service.hpp"
 #include <Eigen/Dense>
 #include <chrono>
 #include <fstream>
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace xacc {
@@ -36,35 +39,38 @@ protected:
   Optimizer *optimizer;
   Accelerator *accelerator;
   HeterogeneousMap parameters;
+  std::shared_ptr<AlgorithmGradientStrategy> gradientStrategy;
 
   // MC-VQE variables
 
+  // default gradient strategy
+  std::string gradientStrategyName = "parameter-shift";
+  // default entangler type
+  std::string entanglerType = "default";
+  // implemented entanglers
+  const std::vector<std::string> entanglers = {"default", "trotterized"};
+  // vector of Monomers
   std::vector<Monomer> monomers;
-
   // number of chromophores
   int nChromophores;
   // true if the molecular system is cyclic
   bool isCyclic;
   // if false, will not compute interference matrix
   bool doInterference = true;
-  // state preparation angles
+  // CIS angles, states, and Hamiltonian
   Eigen::MatrixXd CISGateAngles, CISEigenstates, CISHamiltonian;
+  // CIS eigenenergies
   Eigen::VectorXd CISEnergies;
+  // Eigenvectors of subspace Hamiltonian
   mutable Eigen::MatrixXd subSpaceRotation;
+  // MC energies (diagonal of subspace Hamiltonian)
   mutable Eigen::VectorXd diagonal;
   // AIEM Hamiltonian
   std::shared_ptr<Observable> observable;
   // # number of CIS states = nChromophores + 1
   int nStates;
-  // # of parameters in a single entangler
-  // after merging adjacent Ry gates
-  const int NPARAMSENTANGLER = 4;
-  // angstrom to bohr
-  const double ANGSTROM2BOHR = 1.8897161646320724;
-  // D to a.u.
-  const double DEBYE2AU = 0.393430307;
-  // pi/4
-  const double PI_4 = xacc::constants::pi / 4.0;
+  // number of parameters
+  mutable int nOptParams;
   // path to file with quantum chemistry data
   std::string dataPath;
   // entangler part of the circuit
@@ -75,10 +81,29 @@ protected:
   mutable std::ofstream logFile;
   // valid chromophore pairs (nearest neighbor)
   std::map<int, std::vector<int>> pairs;
+  // angstrom to bohr
+  const double ANGSTROM2BOHR = 1.8897161646320724;
+  // D to a.u.
+  const double DEBYE2AU = 0.393430307;
+  // pi/4
+  const double PI_4 = xacc::constants::pi / 4.0;
+  // pi/2
+  const double PI_2 = xacc::constants::pi / 2.0;
+  // controls the level of printing
+  int logLevel = 1;
+  // controls whether TNQVM will print
+  bool tnqvmLog = false;
+
+  // MC-VQE methods
+
+  // stores valid pairs of chromophores
   void setPairs();
-    // compute AIEM Hamiltonian and CIS
+  // compute CIS
   void computeCIS();
-  void computeAIEM();
+  // compute AIEM Hamiltonian
+  void computeAIEMHamiltonian();
+  // compute subspace, contracted Hamiltonian
+  void computeSubspaceHamiltonian(Eigen::MatrixXd &, const std::vector<double> &) const;
 
   // constructs CIS state preparation circiuit
   std::shared_ptr<CompositeInstruction>
@@ -87,27 +112,26 @@ protected:
   // constructs entangler portion of MC-VQE circuit
   std::shared_ptr<CompositeInstruction> entanglerCircuit() const;
 
-  // gets angles from state coefficients
+  // gets angles for all states
   Eigen::MatrixXd
-  statePreparationAngles(const Eigen::MatrixXd CoefficientMatrix);
+  statePreparationAngles(const Eigen::MatrixXd &CoefficientMatrix);
+
+  // gets angles for a single state
+  Eigen::VectorXd
+  statePreparationAngles(const Eigen::VectorXd &CoefficientVector) const;
 
   // calls the VQE objective function
   double vqeWrapper(const std::shared_ptr<Observable> observable,
                     const std::shared_ptr<CompositeInstruction> kernel,
-                    const std::vector<double> x) const;
+                    const std::vector<double> &x) const;
 
   // gets time stamp
   double timer() const;
 
-  // controls the level of printing
-  int logLevel = 1;
-  bool tnqvmLog = false;
+  // prints messages for given log level
   void logControl(const std::string message, const int level) const;
 
   // response/gradient
-  // std::vector<Eigen::VectorXd> vqeMultipliers;
-  // std::vector<Eigen::MatrixXd> cpCRSMultipliers;
-
   std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
   getUnrelaxed1PDM(const std::vector<double> x);
 
@@ -148,6 +172,7 @@ public:
                               const std::vector<double> &parameters) override;
   void minimizeGradients(HeterogeneousMap &parameters,
                          std::shared_ptr<AcceleratorBuffer> buffer);
+     const std::string name2() const { return "mc-vqe"; }                      
   const std::string name() const override { return "mc-vqe"; }
   const std::string description() const override { return ""; }
   DEFINE_ALGORITHM_CLONE(MC_VQE)

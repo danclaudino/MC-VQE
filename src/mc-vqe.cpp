@@ -16,11 +16,11 @@
 #include "Observable.hpp"
 #include "PauliOperator.hpp"
 #include "xacc_plugin.hpp"
-#include "xacc_service.hpp"
 #include <Eigen/Eigenvalues>
 #include <iomanip>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace xacc;
 using namespace xacc::quantum;
@@ -35,22 +35,22 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   logFile.open("mcvqe.log", std::ofstream::out);
   start = std::chrono::high_resolution_clock::now();
   if (!parameters.pointerLikeExists<Accelerator>("accelerator")) {
-    std::cout << "Acc was false\n";
+    xacc::error("Acc was false");
     return false;
   }
 
   if (!parameters.pointerLikeExists<Optimizer>("optimizer")) {
-    std::cout << "Opt was false\n";
+    xacc::error("Opt was false");
     return false;
   }
 
   if (!parameters.keyExists<int>("nChromophores")) {
-    std::cout << "Missing number of chromophores\n";
+    xacc::error("Missing number of chromophores");
     return false;
   }
 
   if (!parameters.stringExists("data-path")) {
-    std::cout << "Missing data file\n";
+    xacc::error("Missing data file");
     return false;
   }
 
@@ -82,7 +82,24 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
     doInterference = parameters.get<bool>("interference");
   }
 
-  nStates = nChromophores + 1;
+  if (parameters.stringExists("entangler")) {
+    std::cout << parameters.getString("entangler") << "\n";
+    if (!xacc::container::contains(entanglers,
+                                   parameters.getString("entangler"))) {
+      xacc::warning(entanglerType + " not implemented. Using default.");
+    } else {
+      entanglerType = parameters.getString("entangler");
+    }
+  }
+  entangler = entanglerCircuit();
+
+  // Number of states to compute
+  if (parameters.keyExists<int>("n-states")) {
+    nStates = parameters.get<int>("n-states");
+  } else {
+    nStates = nChromophores + 1;
+  }
+
   // here we get an instance of the Importable class and import the data
   // if this is not provided, it defaults to the test implementation
   std::shared_ptr<xacc::algorithm::Importable> import;
@@ -102,13 +119,18 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
 
   // compute Hamiltonians
   computeCIS();
-  computeAIEM();
+  computeAIEMHamiltonian();
 
-  // TODO : set up circuit gradients
-
-  // Number of states to compute
-  if (parameters.keyExists<int>("n-states")) {
-    nStates = parameters.get<int>("n-states");
+  if (optimizer->isGradientBased()) {
+    if (parameters.stringExists("gradient-strategy")) {
+      gradientStrategyName = parameters.getString("gradient-strategy");
+    } else {
+      xacc::warning(
+          "Gradient-based optimization defaults to parameter-shift strategy");
+    }
+    gradientStrategy =
+        xacc::getService<AlgorithmGradientStrategy>(gradientStrategyName);
+    gradientStrategy->initialize({{"observable", observable}});
   }
 
   return true;
@@ -125,10 +147,8 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
   Eigen::MatrixXd entangledHamiltonian =
       Eigen::MatrixXd::Zero(nStates, nStates);
 
-  // all CIS states share the same parameterized entangler gates
-  auto entangler = entanglerCircuit();
   // number of parameters to be optimized
-  auto nOptParams = entangler->nVariables();
+  // auto nOptParams = entangler->nVariables();
   // Only store the diagonal when it lowers the average energy
   diagonal = Eigen::VectorXd::Zero(nStates);
 
@@ -137,6 +157,9 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
 
   // optimization history
   std::vector<double> optHistory;
+
+  // all CIS states share the same parameterized entangler gates
+  nOptParams = entangler->nVariables();
 
   double oldAverageEnergy = 0.0;
   // f is the objective function
@@ -152,12 +175,16 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
         // loop over states
         for (int state = 0; state < nStates; state++) {
 
+          std::vector<double> stateGradient(x.size());
+
           // retrieve CIS state preparation instructions and add entangler
           auto kernel = statePreparationCircuit(CISGateAngles.col(state));
           kernel->addVariables(entangler->getVariables());
           for (auto &inst : entangler->getInstructions()) {
             kernel->addInstruction(inst);
           }
+          // std::cout << kernel->getVariables() << "\n";
+
           logControl("Circuit preparation for state # " +
                          std::to_string(state) + " [" +
                          std::to_string(timer()) + " s]",
@@ -186,9 +213,48 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
                          std::to_string(timer()) + " s]",
                      2);
 
+          // gather circuits for gradients
+          std::vector<std::shared_ptr<CompositeInstruction>> gradFsToExec;
+          if (gradientStrategy) {
+
+            gradFsToExec = gradientStrategy->getGradientExecutions(kernel, x);
+
+            xacc::info("Number of gradient circuit implemetation: " +
+                       std::to_string(gradFsToExec.size()));
+
+            if (gradientStrategy->isNumerical()) {
+              // identityCoeff for the AIEM Hamiltonian is 0
+              gradientStrategy->setFunctionValue(energy);
+            }
+
+            auto tmpBuffer = xacc::qalloc(buffer->size());
+            accelerator->execute(tmpBuffer, gradFsToExec);
+            auto buffers = tmpBuffer->getChildren();
+
+            gradientStrategy->compute(stateGradient, buffers);
+
+            for (int i = 0; i < x.size(); i++) {
+              dx[i] += stateGradient[i] / nStates;
+            }
+          }
+
           // state energy goes to the diagonal of entangledHamiltonian
           diagonal(state) = energy;
           averageEnergy += energy;
+        }
+
+        if (gradientStrategy) {
+
+          double sum = 0.0;
+          for (auto x : dx)
+            sum += x * x;
+
+          std::stringstream ss;
+          ss << "G(" << (!dx.empty() ? std::to_string(dx[0]) : "");
+          for (int i = 1; i < dx.size(); i++)
+            ss << "," << dx[i];
+          ss << ") = " << sqrt(sum);
+          logControl(ss.str() + "\n", 2);
         }
 
         logControl("Energy of all states computed for the current entangler [" +
@@ -226,7 +292,7 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
         logControl("Iteration " + std::to_string(optHistory.size()) + " = " +
                        std::to_string(averageEnergy),
                    1);
-        // logControl(std::to_string(diagonal(1) - diagonal(0)), 1);
+        logControl(std::to_string(diagonal(1) - diagonal(0)), 1);
 
         return averageEnergy;
       },
@@ -253,59 +319,7 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
     logControl(
         "Computing Hamiltonian matrix elements in the interference state basis",
         1);
-    for (int stateA = 0; stateA < nStates - 1; stateA++) {
-      for (int stateB = stateA + 1; stateB < nStates; stateB++) {
-
-        // |+> = (|A> + |B>)/sqrt(2)
-        auto plusInterferenceCircuit = statePreparationCircuit(
-            (CISGateAngles.col(stateA) + CISGateAngles.col(stateB)) /
-            std::sqrt(2));
-        plusInterferenceCircuit->addVariables(entangler->getVariables());
-        for (auto &inst : entangler->getInstructions()) {
-          plusInterferenceCircuit->addInstruction(inst);
-        }
-
-        // vqe call to compute the expectation value of the AEIM Hamiltonian
-        // in the plusInterferenceCircuit with optimal entangler parameters
-        // It does NOT perform any optimization
-        if (tnqvmLog) {
-          xacc::set_verbose(true);
-        }
-        auto plusTerm =
-            vqeWrapper(observable, plusInterferenceCircuit, optimizedEntangler);
-        if (tnqvmLog) {
-          xacc::set_verbose(false);
-        }
-
-        // |-> = (|A> - |B>)/sqrt(2)
-        auto minusInterferenceCircuit = statePreparationCircuit(
-            (CISGateAngles.col(stateA) - CISGateAngles.col(stateB)) /
-            std::sqrt(2));
-        minusInterferenceCircuit->addVariables(entangler->getVariables());
-        for (auto &inst : entangler->getInstructions()) {
-          minusInterferenceCircuit->addInstruction(inst);
-        }
-
-        // vqe call to compute the expectation value of the AEIM Hamiltonian
-        // in the plusInterferenceCircuit with optimal entangler parameters
-        // It does NOT perform any optimization
-        if (tnqvmLog) {
-          xacc::set_verbose(true);
-        }
-        auto minusTerm = vqeWrapper(observable, minusInterferenceCircuit,
-                                    optimizedEntangler);
-        if (tnqvmLog) {
-          xacc::set_verbose(false);
-        }
-
-        // add the new matrix elements to entangledHamiltonian
-        entangledHamiltonian(stateA, stateB) =
-            (plusTerm - minusTerm) / std::sqrt(2);
-        entangledHamiltonian(stateB, stateA) =
-            entangledHamiltonian(stateA, stateB);
-      }
-    }
-
+    computeSubspaceHamiltonian(entangledHamiltonian, result.second);
     logControl("Computed interference basis Hamiltonian matrix elements [" +
                    std::to_string(timer()) + " s]",
                1);
@@ -316,7 +330,7 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(
         entangledHamiltonian);
     auto MC_VQE_Energies = EigenSolver.eigenvalues();
-    auto MC_VQE_States = EigenSolver.eigenvectors();
+    subSpaceRotation = EigenSolver.eigenvectors();
 
     logControl("Diagonalized entangled Hamiltonian [" +
                    std::to_string(timer()) + " s]",
@@ -396,57 +410,8 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
     logControl(
         "Computing Hamiltonian matrix elements in the interference state basis",
         1);
-    for (int stateA = 0; stateA < nStates - 1; stateA++) {
-      for (int stateB = stateA + 1; stateB < nStates; stateB++) {
 
-        // |+> = (|A> + |B>)/sqrt(2)
-        auto plusInterferenceCircuit = statePreparationCircuit(
-            (CISGateAngles.col(stateA) + CISGateAngles.col(stateB)) /
-            std::sqrt(2));
-        plusInterferenceCircuit->addVariables(entangler->getVariables());
-        for (auto &inst : entangler->getInstructions()) {
-          plusInterferenceCircuit->addInstruction(inst);
-        }
-
-        // vqe call to compute the expectation value of the AEIM Hamiltonian
-        // in the plusInterferenceCircuit with optimal entangler parameters
-        // It does NOT perform any optimization
-        if (tnqvmLog) {
-          xacc::set_verbose(true);
-        }
-        auto plusTerm = vqeWrapper(observable, plusInterferenceCircuit, x);
-        if (tnqvmLog) {
-          xacc::set_verbose(false);
-        }
-
-        // |-> = (|A> - |B>)/sqrt(2)
-        auto minusInterferenceCircuit = statePreparationCircuit(
-            (CISGateAngles.col(stateA) - CISGateAngles.col(stateB)) /
-            std::sqrt(2));
-        minusInterferenceCircuit->addVariables(entangler->getVariables());
-        for (auto &inst : entangler->getInstructions()) {
-          minusInterferenceCircuit->addInstruction(inst);
-        }
-
-        // vqe call to compute the expectation value of the AEIM Hamiltonian
-        // in the plusInterferenceCircuit with optimal entangler parameters
-        // It does NOT perform any optimization
-        if (tnqvmLog) {
-          xacc::set_verbose(true);
-        }
-        auto minusTerm = vqeWrapper(observable, minusInterferenceCircuit, x);
-        if (tnqvmLog) {
-          xacc::set_verbose(false);
-        }
-
-        // add the new matrix elements to entangledHamiltonian
-        entangledHamiltonian(stateA, stateB) =
-            (plusTerm - minusTerm) / std::sqrt(2);
-        entangledHamiltonian(stateB, stateA) =
-            entangledHamiltonian(stateA, stateB);
-      }
-    }
-
+    computeSubspaceHamiltonian(entangledHamiltonian, x);
     logControl("Diagonalizing entangled Hamiltonian", 1);
     // Diagonalizing the entangledHamiltonian gives the energy spectrum
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(
@@ -502,126 +467,6 @@ void MC_VQE::setPairs() {
   return;
 }
 
-void MC_VQE::computeCIS() {
-
-  // CIS matrix elements in the nChromophore two-state basis
-  CISHamiltonian = Eigen::MatrixXd::Zero(nStates, nStates);
-
-  // diagonal singles-singles
-  for (int A = 0; A < nChromophores; A++) {
-    CISHamiltonian(A + 1, A + 1) = -2.0 * monomers[A].getD();
-    for (int B : pairs[A]) {
-      CISHamiltonian(A + 1, A + 1) -= 2.0 * (monomers[A].getZ(monomers[B]) +
-                                             monomers[A].getZZ(monomers[B]) +
-                                             monomers[B].getZZ(monomers[A]));
-    }
-  }
-
-  // reference-singles off diagonal
-  for (int A = 0; A < nChromophores; A++) {
-    for (int B : pairs[A]) {
-      CISHamiltonian(A + 1, 0) += monomers[A].getX(monomers[B]) +
-                                  monomers[A].getXZ(monomers[B]) +
-                                  monomers[B].getZX(monomers[A]);
-    }
-  }
-
-  // singles-singles off-diagonal
-  for (int A = 0; A < nChromophores; A++) {
-    for (int B : pairs[A]) {
-      CISHamiltonian(A + 1, B + 1) = 2.0 * monomers[A].getXX(monomers[B]);
-    }
-  }
-
-  // Diagonalizing the CISHamiltonian
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(CISHamiltonian);
-  CISEnergies = EigenSolver.eigenvalues();
-  CISEigenstates = EigenSolver.eigenvectors();
-
-  logControl("Computed CIS parameters [" + std::to_string(timer()) + " s]", 1);
-
-  CISGateAngles.resize(nChromophores, nStates);
-  CISGateAngles = statePreparationAngles(CISEigenstates);
-
-  // end of preProcessing
-  return;
-}
-
-void MC_VQE::computeAIEM() {
-
-  // Compute the AIEM Hamiltonian
-  PauliOperator hamiltonian;
-  for (int A = 0; A < nChromophores; A++) {
-
-    double X = 0.0, Z = monomers[A].getD();
-
-    for (int B : pairs[A]) {
-
-      X += monomers[A].getX(monomers[B]);
-      Z += monomers[A].getZ(monomers[B]);
-
-      hamiltonian +=
-          PauliOperator({{A, "X"}, {B, "X"}}, monomers[A].getXX(monomers[B]));
-      hamiltonian +=
-          PauliOperator({{A, "X"}, {B, "Z"}}, monomers[A].getXZ(monomers[B]));
-      hamiltonian +=
-          PauliOperator({{A, "Z"}, {B, "X"}}, monomers[A].getZX(monomers[B]));
-      hamiltonian +=
-          PauliOperator({{A, "Z"}, {B, "Z"}}, monomers[A].getZZ(monomers[B]));
-    }
-
-    hamiltonian += PauliOperator({{A, "Z"}}, Z);
-    hamiltonian += PauliOperator({{A, "X"}}, X);
-  }
-  // Done with the AIEM Hamiltonian just need a pointer for it
-  observable = std::make_shared<PauliOperator>(hamiltonian);
-
-  logControl("Computed AIEM Hamiltonian [" + std::to_string(timer()) + " s]",
-             1);
-
-  return;
-}
-
-Eigen::MatrixXd
-MC_VQE::statePreparationAngles(const Eigen::MatrixXd CoefficientMatrix) {
-
-  Eigen::MatrixXd gateAngles =
-      Eigen::MatrixXd::Zero(2 * nChromophores - 1, nStates);
-
-  // Computing the CIS state preparation angles (Ref3 Eqs. 60-61)
-  // We need to multiply the angles by 2 to match Rob's results
-  // Probably because his simulator implements rotations as
-  // e^(-i * theta * Y), while we do e^(-i * theta/2 * Y)
-  for (int state = 0; state < nStates; state++) {
-    for (int angle = 0; angle < nChromophores; angle++) {
-
-      double partialCoeffNorm = CoefficientMatrix.col(state)
-                                    .segment(angle, nChromophores - angle + 1)
-                                    .norm();
-
-      if (angle == 0) {
-        gateAngles(angle, state) =
-            2.0 * std::acos(CoefficientMatrix(angle, state) / partialCoeffNorm);
-
-      } else {
-        gateAngles(2 * angle - 1, state) =
-            2.0 * std::acos(CoefficientMatrix(angle, state) / partialCoeffNorm);
-        gateAngles(2 * angle, state) =
-            2.0 * std::acos(CoefficientMatrix(angle, state) / partialCoeffNorm);
-      }
-    }
-
-    // multiply the last gate angle by the sign of the
-    // last coefficient for the state
-    if (CoefficientMatrix(Eigen::last, state) < 0.0) {
-      gateAngles(2 * nChromophores - 2, state) *= -1.0;
-      gateAngles(2 * nChromophores - 3, state) *= -1.0;
-    }
-  }
-
-  return gateAngles;
-}
-
 void MC_VQE::logControl(const std::string message, const int level) const {
   /** Function that controls the level of printing
    * @param[in] message This is what is to be printed
@@ -640,7 +485,7 @@ void MC_VQE::logControl(const std::string message, const int level) const {
 // This is just a wrapper to compute <H^n> with VQE::execute(q, {})
 double MC_VQE::vqeWrapper(const std::shared_ptr<Observable> observable,
                           const std::shared_ptr<CompositeInstruction> kernel,
-                          const std::vector<double> x) const {
+                          const std::vector<double> &x) const {
 
   auto q = xacc::qalloc(nChromophores);
   auto vqe = xacc::getAlgorithm("vqe", {{"observable", observable},

@@ -1,6 +1,14 @@
+#include "Circuit.hpp"
 #include "mc-vqe.hpp"
+#include <Eigen/Eigenvalues>
+#include <complex>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace xacc;
+using namespace xacc::quantum;
 
 namespace xacc {
 namespace algorithm {
@@ -64,93 +72,190 @@ MC_VQE::statePreparationCircuit(const Eigen::VectorXd &angles) const {
   return cisCircuit;
 }
 
-std::shared_ptr<CompositeInstruction> MC_VQE::entanglerCircuit() const {
+std::shared_ptr<CompositeInstruction>
+MC_VQE::entanglerCircuit() const {
   /** Constructs the entangler part of the circuit
    */
 
   // Create CompositeInstruction for entangler
   auto provider = xacc::getIRProvider("quantum");
   auto entanglerCircuit = provider->createComposite("entanglerCircuit");
+  int varIdx = 0;
 
-  // structure of entangler
-  // does not implement the first two Ry to remove redundancies in the circuit
-  // and thus reducing the number of variational parameters
-  //
-  // |A>--[Ry(x0)]--o--[Ry(x2)]--o--[Ry(x4)]-
-  //                |            |
-  // |B>--[Ry(x1)]--x--[Ry(x3)]--x--[Ry(x5)]-
-  //
-  auto entanglerGate = [&](const std::size_t control, const std::size_t target,
-                           int paramCounter) {
-    /** Lambda function to construct the entangler gates
-     * Interleaves CNOT(control, target) and Ry rotations
-     *
-     * @param[in] control Index of the control/source qubit
-     * @param[in] target Index of the target qubit
-     * @param[in] paramCounter Variable that keeps track of and indexes the
-     * circuit parameters
-     */
+ if (entanglerType == "trotterized") {
 
-    auto cnot1 = provider->createInstruction("CNOT", {control, target});
-    entanglerCircuit->addInstruction(cnot1);
+    auto entangler = [&](const std::size_t control, const std::size_t target) {
 
-    auto ry1 = provider->createInstruction(
-        "Ry", {control},
-        {InstructionParameter("x" + std::to_string(paramCounter))});
-    entanglerCircuit->addVariable("x" + std::to_string(paramCounter));
-    entanglerCircuit->addInstruction(ry1);
+      std::vector<std::shared_ptr<Instruction>> gates;
+      std::vector<std::string> varNames;
 
-    auto ry2 = provider->createInstruction(
-        "Ry", {target},
-        {InstructionParameter("x" + std::to_string(paramCounter + 1))});
-    entanglerCircuit->addVariable("x" + std::to_string(paramCounter + 1));
-    entanglerCircuit->addInstruction(ry2);
+      auto varName = "x" + std::to_string(varIdx++);
+      auto ry = provider->createInstruction("Ry", {target}, {varName});
+      varNames.push_back(varName);
+      gates.push_back(ry);
 
-    auto cnot2 = provider->createInstruction("CNOT", {control, target});
-    entanglerCircuit->addInstruction(cnot2);
+      varName = "x" + std::to_string(varIdx++);
+      ry = provider->createInstruction("Ry", {target}, {varName});
+      varNames.push_back(varName);
+      gates.push_back(ry);
 
-    auto ry3 = provider->createInstruction(
-        "Ry", {control},
-        {InstructionParameter("x" + std::to_string(paramCounter + 2))});
-    entanglerCircuit->addVariable("x" + std::to_string(paramCounter + 2));
-    entanglerCircuit->addInstruction(ry3);
+      auto rx2 = provider->createInstruction("U", {control}, {PI_2, 3 * PI_2, PI_2});
+      gates.push_back(rx2);
 
-    auto ry4 = provider->createInstruction(
-        "Ry", {target},
-        {InstructionParameter("x" + std::to_string(paramCounter + 3))});
-    entanglerCircuit->addVariable("x" + std::to_string(paramCounter + 3));
-    entanglerCircuit->addInstruction(ry4);
-  };
+      auto h = provider->createInstruction("H", {target});
+      gates.push_back(h);
 
-  // placing the first Ry's in the circuit
-  int paramCounter = 0;
-  for (int i = 0; i < nChromophores; i++) {
-    // std::size_t q = i;
-    auto ry = provider->createInstruction(
-        "Ry", {(std::size_t)i},
-        {InstructionParameter("x" + std::to_string(paramCounter))});
-    entanglerCircuit->addVariable("x" + std::to_string(paramCounter));
-    entanglerCircuit->addInstruction(ry);
+      auto cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
 
-    paramCounter++;
-  }
+      varName = "x" + std::to_string(varIdx++);
+      auto rz = provider->createInstruction("Rz", {target}, {varName});
+      varNames.push_back(varName);
+      gates.push_back(rz);
 
-  // placing the entanglerGates in the circuit
-  for (int layer : {0, 1}) {
-    for (int i = layer; i < nChromophores - layer; i += 2) {
-      std::size_t control = i, target = i + 1;
-      entanglerGate(control, target, paramCounter);
-      paramCounter += NPARAMSENTANGLER;
+      cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
+
+      h = provider->createInstruction("H", {target});
+      gates.push_back(h);
+
+      cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
+
+      varName = "x" + std::to_string(varIdx++);
+      rz = provider->createInstruction("Rz", {target}, {varName});
+      varNames.push_back(varName);
+      gates.push_back(rz);
+
+      cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
+
+      auto rx2T = provider->createInstruction("U", {control}, {PI_2, PI_2, 3 * PI_2});
+      gates.push_back(rx2T);
+
+      rx2 = provider->createInstruction("U", {target}, {PI_2, 3 * PI_2, PI_2});
+      gates.push_back(rx2);
+
+      cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
+
+      varName = "x" + std::to_string(varIdx++);
+      rz = provider->createInstruction("Rz", {target}, {varName});
+      varNames.push_back(varName);
+      gates.push_back(rz);
+
+      cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
+
+      h = provider->createInstruction("H", {control});
+      gates.push_back(h);
+
+      cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
+
+      varName = "x" + std::to_string(varIdx++);
+      rz = provider->createInstruction("Rz", {target}, {varName});
+      varNames.push_back(varName);
+      gates.push_back(rz);
+
+      cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
+
+      h = provider->createInstruction("H", {control});
+      gates.push_back(h);
+
+      rx2T = provider->createInstruction("U", {target}, {PI_2, PI_2, 3 * PI_2});
+      gates.push_back(rx2T);
+
+      entanglerCircuit->addVariables(varNames);
+      entanglerCircuit->addInstructions(gates);
+    };
+
+/*
+     // placing the first Ry's in the circuit
+    for (std::size_t i = 0; i < nChromophores; i++) {
+      std::string varName = "x" + std::to_string(varIdx++);
+      auto ry = provider->createInstruction("Ry", {i}, {varName});
+      entanglerCircuit->addVariable(varName);
+      entanglerCircuit->addInstruction(ry);
     }
+*/
+    // placing the entanglerGates in the circuit
+    for (int layer : {0, 1}) {
+      for (int i = layer; i < nChromophores - layer; i += 2) {
+        std::size_t control = i, target = i + 1;
+        entangler(control, target);
+      }
+    }
+
+    // if the molecular system is cyclic, we need to add this last entangler
+    if (isCyclic) {
+      std::size_t control = nChromophores - 1, target = 0;
+      entangler(control, target);
+    } 
+
+  } 
+  
+  if (entanglerType == "default") {
+
+    auto entangler = [&](const std::size_t control, const std::size_t target) {
+
+      std::vector<std::shared_ptr<Instruction>> gates;
+      std::vector<std::string> varNames;
+      auto cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
+
+      std::string varName = "x" + std::to_string(varIdx++);
+      auto ry = provider->createInstruction("Ry", {target}, {varName});
+      gates.push_back(ry);
+      varNames.push_back(varName);
+
+      varName = "x" + std::to_string(varIdx++);
+      ry = provider->createInstruction("Ry", {control}, {varName});
+      gates.push_back(ry);
+      varNames.push_back(varName);
+
+      cnot = provider->createInstruction("CNOT", {control, target});
+      gates.push_back(cnot);
+
+      varName = "x" + std::to_string(varIdx++);
+      ry = provider->createInstruction("Ry", {target}, {varName});
+      gates.push_back(ry);
+      varNames.push_back(varName);
+
+      varName = "x" + std::to_string(varIdx++);
+      ry = provider->createInstruction("Ry", {control},{varName});
+      gates.push_back(ry);
+      varNames.push_back(varName);
+
+      entanglerCircuit->addVariables(varNames);
+      entanglerCircuit->addInstructions(gates);
+    };
+
+    // placing the first Ry's in the circuit
+    for (std::size_t i = 0; i < nChromophores; i++) {
+      std::string varName = "x" + std::to_string(varIdx++);
+      auto ry = provider->createInstruction("Ry", {i}, {varName});
+      entanglerCircuit->addVariable(varName);
+      entanglerCircuit->addInstruction(ry);
+    }
+
+    // placing the entanglerGates in the circuit
+    for (int layer : {0, 1}) {
+      for (int i = layer; i < nChromophores - layer; i += 2) {
+        std::size_t control = i, target = i + 1;
+        entangler(control, target);
+      }
+    }
+
+    // if the molecular system is cyclic, we need to add this last entangler
+    if (isCyclic) {
+      std::size_t control = nChromophores - 1, target = 0;
+      entangler(control, target);
+    }
+
   }
 
-  // if the molecular system is cyclic, we need to add this last entangler
-  if (isCyclic) {
-    std::size_t control = nChromophores - 1, target = 0;
-    entanglerGate(control, target, paramCounter);
-  }
-
-  // end of entangler circuit construction
   return entanglerCircuit;
 }
 

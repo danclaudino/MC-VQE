@@ -83,12 +83,11 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   }
 
   if (parameters.stringExists("entangler")) {
-    std::cout << parameters.getString("entangler") << "\n";
-    if (!xacc::container::contains(entanglers,
-                                   parameters.getString("entangler"))) {
+    auto tmpEntangler = parameters.getString("entangler");
+    if (!xacc::container::contains(entanglers, tmpEntangler)) {
       xacc::warning(entanglerType + " not implemented. Using default.");
     } else {
-      entanglerType = parameters.getString("entangler");
+      entanglerType = tmpEntangler; // parameters.getString("entangler");
     }
   }
   entangler = entanglerCircuit();
@@ -113,6 +112,20 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
 
   import->import(nChromophores, dataPath);
   monomers = import->getMonomers();
+
+  // Convert Debye to a.u.
+  if (parameters.keyExists<bool>("debye-to-au")) {
+    for (auto &m : monomers) {
+      m.isDipoleInDebye(parameters.get<bool>("debye-to-au"));
+    }
+  }
+
+  // Convert Angstrom to a.u.
+  if (parameters.keyExists<bool>("angstrom-to-au")) {
+    for (auto &m : monomers) {
+      m.isCenterOfMassInAngstrom(parameters.get<bool>("angstrom-to-au"));
+    }
+  }
 
   // set pairs based on the connectivity
   setPairs();
@@ -432,6 +445,7 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                                  MC_VQE_Energies.data() +
                                      MC_VQE_Energies.size());
 
+    // auto dm = getUnrelaxed1PDM(x);
     return spectrum;
   } else {
     return {};

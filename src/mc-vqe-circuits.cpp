@@ -256,6 +256,15 @@ MC_VQE::entanglerCircuit() const {
 
   }
 
+  if (entanglerType == "Ry") {
+    for (std::size_t i = 0; i < nChromophores; i++) {
+      std::string varName = "x" + std::to_string(varIdx++);
+      auto ry = provider->createInstruction("Ry", {i}, {varName});
+      entanglerCircuit->addVariable(varName);
+      entanglerCircuit->addInstruction(ry);
+    }
+  }
+
   return entanglerCircuit;
 }
 

@@ -2,10 +2,10 @@
 #define MONOMER_HPP_
 
 #include <Eigen/Dense>
-#include <iostream>
 
 class Monomer {
 private:
+  const double ANGSTROM2BOHR = 1.8897161646320724, DEBYE2AU = 0.393430307;
   double _groundStateEnergy, _excitedStateEnergy;
   Eigen::Vector3d _groundStateDipole, _excitedStateDipole, _transitionDipole,
       _centerOfMass;
@@ -38,9 +38,30 @@ public:
     _centerOfMass = centerOfMass;
   }
 
+  void isDipoleInDebye(const bool isDebye) {
+
+    if (isDebye) {
+      _groundStateDipole *= DEBYE2AU;
+      _excitedStateDipole *= DEBYE2AU;
+      return;
+    } else {
+      return;
+    }
+  }
+
+  void isCenterOfMassInAngstrom(const bool isAngstrom) {
+    if (isAngstrom) {
+      _centerOfMass *= ANGSTROM2BOHR;
+      return;
+    } else {
+      return;
+    }
+  }
+
   double getS() { return 0.5 * (_groundStateEnergy + _excitedStateEnergy); }
   double getD() { return 0.5 * (_groundStateEnergy - _excitedStateEnergy); }
   double getE() { return _excitedStateEnergy; }
+  
   Eigen::Vector3d getDipoleSum() {
     return 0.5 * (_groundStateDipole + _excitedStateDipole);
   }

@@ -22,21 +22,19 @@ namespace xacc {
 namespace algorithm {
 
 // This imports the data in the files
-// top_dir/examples/18_qubit_datafile.txt and
+// top_dir/examples/2_qubit_datafile.txt
+// top_dir/examples/18_qubit_datafile.txt
 // top_dir/examples/60_qubit_datafile.txt
 class ImportFromTestFile : public Importable {
 private:
   std::vector<Monomer> monomers;
 
-  // angstrom to bohr
-  const double ANGSTROM2BOHR = 1.8897161646320724;
-  // D to a.u.
-  const double DEBYE2AU = 0.393430307;
-
 public:
   void import(const int nChromophores, const std::string dataDir) override {
     std::string dataPath;
-    if (nChromophores <= 18) {
+    if (nChromophores == 2) {
+      dataPath = dataDir + "2_qubit_datafile.txt";
+    } else if (nChromophores <= 18) {
       dataPath = dataDir + "18_qubit_datafile.txt";
     } else {
       dataPath = dataDir + "60_qubit_datafile.txt";
@@ -61,13 +59,14 @@ public:
       std::getline(file, line);
       auto excitedStateEnergy = std::stod(line.substr(line.find(":") + 1));
 
+
       std::getline(file, line);
       tmp = line.substr(line.find(":") + 1);
       std::stringstream centerOfMassStream(tmp);
       Eigen::Vector3d centerOfMass = Eigen::Vector3d::Zero();
       xyz = 0;
       while (std::getline(centerOfMassStream, comp, ',')) {
-        centerOfMass(xyz++) = std::stod(comp) * ANGSTROM2BOHR;
+        centerOfMass(xyz++) = std::stod(comp);// * ANGSTROM2BOHR;
       }
 
       std::getline(file, line);
@@ -76,7 +75,7 @@ public:
       std::stringstream gsDipoleStream(tmp);
       xyz = 0;
       while (std::getline(gsDipoleStream, comp, ',')) {
-        groundStateDipole(xyz++) = std::stod(comp) * DEBYE2AU;
+        groundStateDipole(xyz++) = std::stod(comp);// * DEBYE2AU;
       }
 
       std::getline(file, line);
@@ -85,7 +84,7 @@ public:
       Eigen::Vector3d excitedStateDipole = Eigen::Vector3d::Zero();
       xyz = 0;
       while (std::getline(esDipoleStream, comp, ',')) {
-        excitedStateDipole(xyz++) = std::stod(comp) * DEBYE2AU;
+        excitedStateDipole(xyz++) = std::stod(comp);// * DEBYE2AU;
       }
 
       std::getline(file, line);
@@ -100,13 +99,13 @@ public:
       Monomer m(groundStateEnergy, excitedStateEnergy, groundStateDipole,
                 excitedStateDipole, transitionDipole, centerOfMass);
       monomers.push_back(m);
+
     }
     file.close();
     return;
   }
 
   std::vector<Monomer> getMonomers() override { return monomers; }
-
   const std::string name() const override { return "import-from-test-file"; }
   const std::string description() const override { return ""; }
 };

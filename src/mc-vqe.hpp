@@ -48,7 +48,7 @@ protected:
   // default entangler type
   std::string entanglerType = "default";
   // implemented entanglers
-  const std::vector<std::string> entanglers = {"default", "trotterized"};
+  const std::vector<std::string> entanglers = {"default", "trotterized", "Ry"};
   // vector of Monomers
   std::vector<Monomer> monomers;
   // number of chromophores
@@ -82,9 +82,9 @@ protected:
   // valid chromophore pairs (nearest neighbor)
   std::map<int, std::vector<int>> pairs;
   // angstrom to bohr
-  const double ANGSTROM2BOHR = 1.8897161646320724;
+  //const double ANGSTROM2BOHR = 1.8897161646320724;
   // D to a.u.
-  const double DEBYE2AU = 0.393430307;
+  //const double DEBYE2AU = 0.393430307;
   // pi/4
   const double PI_4 = xacc::constants::pi / 4.0;
   // pi/2
@@ -133,36 +133,36 @@ protected:
 
   // response/gradient
   std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
-  getUnrelaxed1PDM(const std::vector<double> x);
+  getUnrelaxed1PDM(const std::vector<double>& x);
 
   std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
-  getUnrelaxed2PDM(const std::vector<double> x);
+  getUnrelaxed2PDM(const std::vector<double>& x);
 
-  std::vector<Eigen::VectorXd> getVQEMultipliers(const std::vector<double> x);
+  std::vector<Eigen::VectorXd> getVQEMultipliers(const std::vector<double>& x);
 
   std::unordered_map<std::string, Eigen::VectorXd>
-  getVQE1PDM(const std::vector<double>, const std::vector<Eigen::VectorXd>);
+  getVQE1PDM(const std::vector<double>&, const std::vector<Eigen::VectorXd>&);
 
   std::unordered_map<std::string, Eigen::MatrixXd>
-  getVQE2PDM(const std::vector<double>, const std::vector<Eigen::VectorXd>);
+  getVQE2PDM(const std::vector<double>&, const std::vector<Eigen::VectorXd>&);
 
   std::vector<Eigen::MatrixXd>
-  getCRSMultipliers(const std::vector<double>,
-                    const std::vector<Eigen::VectorXd>);
+  getCRSMultipliers(const std::vector<double>&,
+                    const std::vector<Eigen::VectorXd>&);
 
   std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
-  getCRS1PDM(const std::vector<Eigen::MatrixXd>);
+  getCRS1PDM(const std::vector<Eigen::MatrixXd>&);
 
   std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
-  getCRS2PDM(const std::vector<Eigen::MatrixXd>);
+  getCRS2PDM(const std::vector<Eigen::MatrixXd>&);
 
   std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
       getMonomerGradient(
-          std::unordered_map<std::string, std::vector<Eigen::VectorXd>>);
+          std::unordered_map<std::string, std::vector<Eigen::VectorXd>>&);
 
   std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
       getDimerInteractionGradient(
-          std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>);
+          std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>&);
 
 public:
   bool initialize(const HeterogeneousMap &parameters) override;

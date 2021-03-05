@@ -1,0 +1,14 @@
+0
+Ground state energy: -1341.29514303
+Excited state energy: -1341.20938681
+Center of mass: 38.733793,34.45552299,57.93148366
+Ground state dipole moment: -0.74534906,3.0186206,-0.97171837
+Excited state dipole moment: -0.01605421,-0.61262246,-0.57384298
+Transition dipole moment: -0.53178512,2.72710041,-0.46698677
+1
+Ground state energy: -1341.28461116
+Excited state energy: -1341.20749242
+Center of mass: 33.13386254,30.9527896,54.89935232
+Ground state dipole moment: -0.50395991,0.60309634,-0.4356051
+Excited state dipole moment: -0.90185212,2.90292473,-0.81867905
+Transition dipole moment: -0.54203994,2.97928004,-0.42866734

@@ -14,7 +14,7 @@ namespace algorithm {
 // compute the unrelaxed 1PDM
 // Eq. 104/121
 std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
-MC_VQE::getUnrelaxed1PDM(const std::vector<double> x) {
+MC_VQE::getUnrelaxed1PDM(const std::vector<double>& x) {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
@@ -55,7 +55,7 @@ MC_VQE::getUnrelaxed1PDM(const std::vector<double> x) {
 // compute the unrelaxed 2PDM
 // Eq. 105/122
 std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getUnrelaxed2PDM(const std::vector<double> x) {
+MC_VQE::getUnrelaxed2PDM(const std::vector<double>& x) {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
@@ -98,11 +98,11 @@ MC_VQE::getUnrelaxed2PDM(const std::vector<double> x) {
 
 // compute the VQE multipliers
 std::vector<Eigen::VectorXd>
-MC_VQE::getVQEMultipliers(const std::vector<double> x) {
+MC_VQE::getVQEMultipliers(const std::vector<double>& x) {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
-  auto nParams = nChromophores * NPARAMSENTANGLER;
+  auto nParams = x.size();
   std::vector<double> tmp_x;
 
   std::vector<Eigen::VectorXd> gradients;
@@ -209,11 +209,11 @@ MC_VQE::getVQEMultipliers(const std::vector<double> x) {
 // and instead of a vector<Eigen::Vector>
 // we have only an Eigen::Vector
 std::unordered_map<std::string, Eigen::VectorXd>
-MC_VQE::getVQE1PDM(const std::vector<double> x,
-                   const std::vector<Eigen::VectorXd> vqeMultipliers) {
+MC_VQE::getVQE1PDM(const std::vector<double>& x,
+                   const std::vector<Eigen::VectorXd>& vqeMultipliers) {
 
   // Eq. 128
-  auto nParams = nChromophores * NPARAMSENTANGLER;
+  auto nParams = x.size();
   std::vector<double> tmp_x;
   std::unordered_map<std::string, Eigen::VectorXd> vqe1PDM;
   for (auto termStr : {"X", "Z"}) {
@@ -256,11 +256,11 @@ MC_VQE::getVQE1PDM(const std::vector<double> x,
 }
 
 std::unordered_map<std::string, Eigen::MatrixXd>
-MC_VQE::getVQE2PDM(const std::vector<double> x,
-                   const std::vector<Eigen::VectorXd> vqeMultipliers) {
+MC_VQE::getVQE2PDM(const std::vector<double>& x,
+                   const std::vector<Eigen::VectorXd>& vqeMultipliers) {
 
   // Eq. 128
-  auto nParams = nChromophores * NPARAMSENTANGLER;
+  auto nParams = x.size();
   std::vector<double> tmp_x;
   std::unordered_map<std::string, Eigen::MatrixXd> vqe2PDM;
   for (auto termStr : {"XX", "XZ", "ZX", "ZZ"}) {
@@ -311,8 +311,8 @@ MC_VQE::getVQE2PDM(const std::vector<double> x,
 
 // compute multipliers w.r.t. contracted reference states
 std::vector<Eigen::MatrixXd>
-MC_VQE::getCRSMultipliers(const std::vector<double> x,
-                          const std::vector<Eigen::VectorXd> vqeMultipliers) {
+MC_VQE::getCRSMultipliers(const std::vector<double>& x,
+                          const std::vector<Eigen::VectorXd>& vqeMultipliers) {
 
   // Jacobian Eq. 62
   auto jacobian = [](int M, int I, Eigen::VectorXd coefficients) {
@@ -433,7 +433,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double> x,
   }
 
   // Eq. 134
-  auto nParams = nChromophores * NPARAMSENTANGLER;
+  auto nParams = x.size();
   for (int mc = 0; mc < nStates; mc++) {
 
     Eigen::MatrixXd stateGrad = Eigen::MatrixXd::Zero(nStates, nStates);
@@ -551,7 +551,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double> x,
 
 // compute CRS contribution to the relaxed 1PDM
 std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
-MC_VQE::getCRS1PDM(const std::vector<Eigen::MatrixXd> cpCRSMultipliers) {
+MC_VQE::getCRS1PDM(const std::vector<Eigen::MatrixXd>& cpCRSMultipliers) {
 
   // Compute D Eq. 138
   std::unordered_map<std::string, std::vector<Eigen::VectorXd>> CRS1PDM;
@@ -602,7 +602,7 @@ MC_VQE::getCRS1PDM(const std::vector<Eigen::MatrixXd> cpCRSMultipliers) {
 
 // compute CRS contribution to the relaxed 2PDM
 std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getCRS2PDM(const std::vector<Eigen::MatrixXd> cpCRSMultipliers) {
+MC_VQE::getCRS2PDM(const std::vector<Eigen::MatrixXd>& cpCRSMultipliers) {
 
   // Compute D Eq. 138
   std::unordered_map<std::string, std::vector<Eigen::MatrixXd>> CRS2PDM;
@@ -661,7 +661,7 @@ MC_VQE::getCRS2PDM(const std::vector<Eigen::MatrixXd> cpCRSMultipliers) {
 
 std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
 MC_VQE::getMonomerGradient(
-    std::unordered_map<std::string, std::vector<Eigen::VectorXd>> _1PDM) {
+    std::unordered_map<std::string, std::vector<Eigen::VectorXd>>& _1PDM) {
 
   std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
       monomerGradients;

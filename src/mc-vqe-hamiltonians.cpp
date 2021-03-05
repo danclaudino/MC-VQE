@@ -22,6 +22,7 @@ void MC_VQE::computeCIS() {
   // diagonal singles-singles
   for (int A = 0; A < nChromophores; A++) {
     CISHamiltonian(A + 1, A + 1) = -2.0 * monomers[A].getD();
+    double z = 0.0;
     for (int B : pairs[A]) {
       CISHamiltonian(A + 1, A + 1) -= 2.0 * (monomers[A].getZ(monomers[B]) +
                                              monomers[A].getZZ(monomers[B]) +
@@ -36,6 +37,7 @@ void MC_VQE::computeCIS() {
                                   monomers[A].getXZ(monomers[B]) +
                                   monomers[B].getZX(monomers[A]);
     }
+    CISHamiltonian(0, A + 1) = CISHamiltonian(A + 1, 0);
   }
 
   // singles-singles off-diagonal
@@ -85,6 +87,7 @@ void MC_VQE::computeAIEMHamiltonian() {
     hamiltonian += PauliOperator({{A, "Z"}}, Z);
     hamiltonian += PauliOperator({{A, "X"}}, X);
   }
+
   // Done with the AIEM Hamiltonian just need a pointer for it
   observable = std::make_shared<PauliOperator>(hamiltonian);
 

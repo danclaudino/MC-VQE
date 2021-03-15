@@ -49,8 +49,8 @@ void MC_VQE::computeCIS() {
 
   // Diagonalizing the CISHamiltonian
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(CISHamiltonian);
-  CISEnergies = EigenSolver.eigenvalues();
-  CISEigenstates = EigenSolver.eigenvectors();
+  CISEnergies = EigenSolver.eigenvalues()(Eigen::seq(0, nStates - 1));
+  CISEigenstates = EigenSolver.eigenvectors()(Eigen::all, Eigen::seq(0, nStates - 1));
 
   logControl("Computed CIS parameters [" + std::to_string(timer()) + " s]", 1);
 
@@ -100,8 +100,8 @@ void MC_VQE::computeAIEMHamiltonian() {
 void MC_VQE::computeSubspaceHamiltonian(Eigen::MatrixXd &entangledHamiltonian,
                                         const std::vector<double> &x) const {
 
-  for (int stateA = 0; stateA < nStates - 1; stateA++) {
-    for (int stateB = stateA + 1; stateB < nStates; stateB++) {
+  for (int stateA = 0; stateA < nStates; stateA++) {
+    for (int stateB = 0; stateB < stateA; stateB++) {
 
       // |+> = (|A> + |B>)/sqrt(2)
       Eigen::VectorXd plusCoefficients =
@@ -153,37 +153,39 @@ void MC_VQE::computeSubspaceHamiltonian(Eigen::MatrixXd &entangledHamiltonian,
 }
 
 Eigen::MatrixXd
-MC_VQE::statePreparationAngles(const Eigen::MatrixXd &CoefficientMatrix) {
+MC_VQE::statePreparationAngles(const Eigen::MatrixXd &coefficientMatrix) const {
 
+
+  auto nCols = coefficientMatrix.cols();
   Eigen::MatrixXd gateAngles =
-      Eigen::MatrixXd::Zero(2 * nChromophores - 1, nStates);
+      Eigen::MatrixXd::Zero(2 * nChromophores - 1, nCols);
 
   // Computing the CIS state preparation angles (Ref3 Eqs. 60-61)
   // We need to multiply the angles by 2 to match Rob's results
   // Probably because his simulator implements rotations as
   // e^(-i * theta * Y), while we do e^(-i * theta/2 * Y)
-  for (int state = 0; state < nStates; state++) {
+  for (int state = 0; state < nCols; state++) {
     for (int angle = 0; angle < nChromophores; angle++) {
 
-      double partialCoeffNorm = CoefficientMatrix.col(state)
+      double partialCoeffNorm = coefficientMatrix.col(state)
                                     .segment(angle, nChromophores - angle + 1)
                                     .norm();
 
       if (angle == 0) {
         gateAngles(angle, state) =
-            2.0 * std::acos(CoefficientMatrix(angle, state) / partialCoeffNorm);
+            2.0 * std::acos(coefficientMatrix(angle, state) / partialCoeffNorm);
 
       } else {
         gateAngles(2 * angle - 1, state) =
-            2.0 * std::acos(CoefficientMatrix(angle, state) / partialCoeffNorm);
+            2.0 * std::acos(coefficientMatrix(angle, state) / partialCoeffNorm);
         gateAngles(2 * angle, state) =
-            2.0 * std::acos(CoefficientMatrix(angle, state) / partialCoeffNorm);
+            2.0 * std::acos(coefficientMatrix(angle, state) / partialCoeffNorm);
       }
     }
 
     // multiply the last gate angle by the sign of the
     // last coefficient for the state
-    if (CoefficientMatrix(Eigen::last, state) < 0.0) {
+    if (coefficientMatrix(Eigen::last, state) < 0.0) {
       gateAngles(2 * nChromophores - 2, state) *= -1.0;
       gateAngles(2 * nChromophores - 3, state) *= -1.0;
     }
@@ -192,41 +194,5 @@ MC_VQE::statePreparationAngles(const Eigen::MatrixXd &CoefficientMatrix) {
   return gateAngles;
 }
 
-Eigen::VectorXd
-MC_VQE::statePreparationAngles(const Eigen::VectorXd &CoefficientVector) const {
-
-  Eigen::VectorXd gateAngles = Eigen::VectorXd::Zero(2 * nChromophores - 1);
-
-  // Computing the CIS state preparation angles (Ref3 Eqs. 60-61)
-  // We need to multiply the angles by 2 to match Rob's results
-  // Probably because his simulator implements rotations as
-  // e^(-i * theta * Y), while we do e^(-i * theta/2 * Y)
-  for (int angle = 0; angle < nChromophores; angle++) {
-
-    double partialCoeffNorm =
-        CoefficientVector.segment(angle, nChromophores - angle + 1).norm();
-
-    if (angle == 0) {
-      gateAngles(angle) =
-          2.0 * std::acos(CoefficientVector(angle) / partialCoeffNorm);
-
-    } else {
-      gateAngles(2 * angle - 1) =
-          2.0 * std::acos(CoefficientVector(angle) / partialCoeffNorm);
-      gateAngles(2 * angle) =
-          2.0 * std::acos(CoefficientVector(angle) / partialCoeffNorm);
-    }
-  }
-
-  // multiply the last gate angle by the sign of the
-  // last coefficient for the state
-  if (CoefficientVector(Eigen::last) < 0.0) {
-    gateAngles(2 * nChromophores - 2) *= -1.0;
-    gateAngles(2 * nChromophores - 3) *= -1.0;
-  }
-
-  return gateAngles;
-}
-
-}
-}
+} // namespace algorithm
+} // namespace xacc

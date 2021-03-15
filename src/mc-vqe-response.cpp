@@ -2,7 +2,7 @@
 #include "mc-vqe.hpp"
 #include "xacc.hpp"
 #include <memory>
-#include <unordered_map>
+#include <map>
 #include <vector>
 
 using namespace xacc;
@@ -13,19 +13,19 @@ namespace algorithm {
 
 // compute the unrelaxed 1PDM
 // Eq. 104/121
-std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
-MC_VQE::getUnrelaxed1PDM(const std::vector<double>& x) {
+std::map<std::string, std::vector<Eigen::MatrixXd>>
+MC_VQE::getUnrelaxed1PDM(const std::vector<double> &x) {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
-  std::unordered_map<std::string, std::vector<Eigen::VectorXd>> unrelaxed1PDM;
+  std::map<std::string, std::vector<Eigen::MatrixXd>> unrelaxed1PDM;
 
   // loop over the single Pauli term
   for (auto termStr : {"X", "Z"}) {
 
     // each element of term1PDM is a vector of density matrix elements
     // for each state given the termStr Pauli term
-    std::vector<Eigen::VectorXd> term1PDM;
+    std::vector<Eigen::MatrixXd> term1PDM;
     // loop over the MC states
     for (int state = 0; state < nStates; state++) {
 
@@ -38,7 +38,7 @@ MC_VQE::getUnrelaxed1PDM(const std::vector<double>& x) {
 
       // loop over chromophores and compute <term>
       // stateDensityMatrix stores 1PDM elements for each chromophore in state
-      Eigen::VectorXd stateDensityMatrix = Eigen::VectorXd::Zero(nChromophores);
+      Eigen::MatrixXd stateDensityMatrix = Eigen::VectorXd::Zero(nChromophores);
       for (int A = 0; A < nChromophores; A++) {
         auto term =
             std::make_shared<PauliOperator>(PauliOperator({{A, termStr}}));
@@ -54,15 +54,15 @@ MC_VQE::getUnrelaxed1PDM(const std::vector<double>& x) {
 
 // compute the unrelaxed 2PDM
 // Eq. 105/122
-std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getUnrelaxed2PDM(const std::vector<double>& x) {
+std::map<std::string, std::vector<Eigen::MatrixXd>>
+MC_VQE::getUnrelaxed2PDM(const std::vector<double> &x) {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
-  std::unordered_map<std::string, std::vector<Eigen::MatrixXd>> unrelaxed2PDM;
+  std::map<std::string, std::vector<Eigen::MatrixXd>> unrelaxed2PDM;
 
   // loop over the Pauli products
-  for (auto termStr : {"XX", "XZ", "ZX", "ZZ"}) {
+  for (auto termStr : {"XX", "XZ", "ZZ"}) {
 
     // each element of term2PDM is a vector of density matrix elements
     // for each state given the termStr Pauli term
@@ -82,30 +82,45 @@ MC_VQE::getUnrelaxed2PDM(const std::vector<double>& x) {
           Eigen::MatrixXd::Zero(nChromophores, nChromophores);
       for (int A = 0; A < nChromophores; A++) {
         for (int B : pairs[A]) {
+
+          if (((termStr == "XX") || (termStr == "ZZ")) && (B < A)) {
+            continue;
+          }
           std::string term1 = {termStr[0]}, term2 = {termStr[1]};
           auto term = std::make_shared<PauliOperator>(
               PauliOperator({{A, term1}, {B, term2}}));
           stateDensityMatrix(A, B) = vqeWrapper(term, kernel, x);
+          if ((termStr == "XX") || (termStr == "ZZ")) {
+            stateDensityMatrix(B, A) = stateDensityMatrix(A, B);
+          }
         }
       }
       term2PDM.push_back(stateDensityMatrix);
     }
     unrelaxed2PDM.emplace(termStr, term2PDM);
+
+    if (termStr == "XZ") {
+      std::vector<Eigen::MatrixXd> term2PDM;
+      for (auto &dm : unrelaxed2PDM["XZ"]) {
+        term2PDM.push_back(dm.transpose());
+      }
+      unrelaxed2PDM.emplace("ZX", term2PDM);
+    }
   }
 
   return unrelaxed2PDM;
 }
 
 // compute the VQE multipliers
-std::vector<Eigen::VectorXd>
-MC_VQE::getVQEMultipliers(const std::vector<double>& x) {
+std::vector<Eigen::MatrixXd>
+MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
   auto nParams = x.size();
   std::vector<double> tmp_x;
 
-  std::vector<Eigen::VectorXd> gradients;
+  std::vector<Eigen::MatrixXd> gradients;
   // compute gradient for each state energy w.r.t. to entangler parameters
   // Eq. 124
   for (int state = 0; state < nStates; state++) {
@@ -117,18 +132,18 @@ MC_VQE::getVQEMultipliers(const std::vector<double>& x) {
       kernel->addInstruction(inst);
     }
 
-    Eigen::VectorXd stateDensityMatrix = Eigen::VectorXd::Zero(nParams);
+    Eigen::MatrixXd stateMultipliers = Eigen::VectorXd::Zero(nParams);
     for (int g = 0; g < nParams; g++) {
       tmp_x = x;
-      tmp_x[g] += PI_4;
-      stateDensityMatrix(g) = vqeWrapper(observable, kernel, tmp_x);
+      tmp_x[g] += PI / 2.0;
+      stateMultipliers(g) = vqeWrapper(observable, kernel, tmp_x);
 
       tmp_x = x;
-      tmp_x[g] -= PI_4;
-      stateDensityMatrix(g) -= vqeWrapper(observable, kernel, tmp_x);
+      tmp_x[g] -= PI / 2.0;
+      stateMultipliers(g) -= vqeWrapper(observable, kernel, tmp_x);
     }
 
-    gradients.push_back(stateDensityMatrix);
+    gradients.push_back(stateMultipliers);
   }
 
   // Now compute Hessian
@@ -147,57 +162,59 @@ MC_VQE::getVQEMultipliers(const std::vector<double>& x) {
 
       // Eq. 125 term #1
       tmp_x = x;
-      tmp_x[g] += 2.0 * PI_4;
+      tmp_x[g] += PI;
       hessian(g, g) += vqeWrapper(observable, kernel, tmp_x);
 
       // Eq. 125 term #2
-      hessian(g, g) += vqeWrapper(observable, kernel, x);
+      // hessian(g, g) += 2.0*vqeWrapper(observable, kernel, x);
+      hessian(g, g) -= 2.0 * vqeWrapper(observable, kernel, x);
 
       // Eq. 125 term #3
       tmp_x = x;
-      tmp_x[g] -= 2.0 * PI_4;
-      hessian(g, g) -= vqeWrapper(observable, kernel, tmp_x);
+      tmp_x[g] -= PI;
+      // hessian(g, g) -= vqeWrapper(observable, kernel, tmp_x);
+      hessian(g, g) += vqeWrapper(observable, kernel, tmp_x);
     }
 
     // off-diagonal Hessian elements
     for (int g = 0; g < nParams; g++) {
-      for (int gp = g + 1; gp < nParams; gp++) {
+      for (int gp = 0; gp < g; gp++) {
 
         // Eq. 126 term #1
         tmp_x = x;
-        tmp_x[g] += PI_4;
-        tmp_x[gp] += PI_4;
+        tmp_x[g] += PI / 2.0;
+        tmp_x[gp] += PI / 2.0;
         hessian(g, gp) += vqeWrapper(observable, kernel, tmp_x);
 
         // Eq. 126 term #2
         tmp_x = x;
-        tmp_x[g] += PI_4;
-        tmp_x[gp] -= PI_4;
+        tmp_x[g] += PI / 2.0;
+        tmp_x[gp] -= PI / 2.0;
         hessian(g, gp) -= vqeWrapper(observable, kernel, tmp_x);
 
         // Eq. 126 term #3
         tmp_x = x;
-        tmp_x[g] -= PI_4;
-        tmp_x[gp] += PI_4;
+        tmp_x[g] -= PI / 2.0;
+        tmp_x[gp] += PI / 2.0;
         hessian(g, gp) -= vqeWrapper(observable, kernel, tmp_x);
 
         // Eq. 126 term #4
         tmp_x = x;
-        tmp_x[g] -= PI_4;
-        tmp_x[gp] -= PI_4;
+        tmp_x[g] -= PI / 2.0;
+        tmp_x[gp] -= PI / 2.0;
         hessian(g, gp) += vqeWrapper(observable, kernel, tmp_x);
 
         hessian(gp, g) = hessian(g, gp);
       }
     }
   }
-  hessian /= nStates;
 
+  hessian /= nStates;
   // Eq. 127
-  std::vector<Eigen::VectorXd> vqeMultipliers;
+  std::vector<Eigen::MatrixXd> vqeMultipliers;
   for (int state = 0; state < nStates; state++) {
-    vqeMultipliers[state] =
-        hessian.colPivHouseholderQr().solve(-gradients[state]);
+    vqeMultipliers.push_back(
+        hessian.colPivHouseholderQr().solve(-gradients[state]));
   }
 
   return vqeMultipliers;
@@ -208,17 +225,17 @@ MC_VQE::getVQEMultipliers(const std::vector<double>& x) {
 // hence all elements for a given state is the same
 // and instead of a vector<Eigen::Vector>
 // we have only an Eigen::Vector
-std::unordered_map<std::string, Eigen::VectorXd>
-MC_VQE::getVQE1PDM(const std::vector<double>& x,
-                   const std::vector<Eigen::VectorXd>& vqeMultipliers) {
+std::map<std::string, Eigen::MatrixXd>
+MC_VQE::getVQE1PDM(const std::vector<double> &x,
+                   const std::vector<Eigen::MatrixXd> &vqeMultipliers) {
 
   // Eq. 128
   auto nParams = x.size();
   std::vector<double> tmp_x;
-  std::unordered_map<std::string, Eigen::VectorXd> vqe1PDM;
+  std::map<std::string, Eigen::MatrixXd> vqe1PDM;
   for (auto termStr : {"X", "Z"}) {
 
-    Eigen::VectorXd term1PDM = Eigen::VectorXd::Zero(nChromophores);
+    Eigen::MatrixXd term1PDM = Eigen::VectorXd::Zero(nChromophores);
     for (int A = 0; A < nChromophores; A++) {
 
       auto term =
@@ -237,12 +254,12 @@ MC_VQE::getVQE1PDM(const std::vector<double>& x,
         // sum over all VQE parameters
         for (int g = 0; g < nParams; g++) {
           tmp_x = x;
-          tmp_x[g] += PI_4;
+          tmp_x[g] += PI / 4.0;
           term1PDM(A) +=
               vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
 
           tmp_x = x;
-          tmp_x[g] -= PI_4;
+          tmp_x[g] -= PI / 4.0;
           term1PDM(A) -=
               vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
         }
@@ -255,14 +272,14 @@ MC_VQE::getVQE1PDM(const std::vector<double>& x,
   return vqe1PDM;
 }
 
-std::unordered_map<std::string, Eigen::MatrixXd>
-MC_VQE::getVQE2PDM(const std::vector<double>& x,
-                   const std::vector<Eigen::VectorXd>& vqeMultipliers) {
+std::map<std::string, Eigen::MatrixXd>
+MC_VQE::getVQE2PDM(const std::vector<double> &x,
+                   const std::vector<Eigen::MatrixXd> &vqeMultipliers) {
 
   // Eq. 128
   auto nParams = x.size();
   std::vector<double> tmp_x;
-  std::unordered_map<std::string, Eigen::MatrixXd> vqe2PDM;
+  std::map<std::string, Eigen::MatrixXd> vqe2PDM;
   for (auto termStr : {"XX", "XZ", "ZX", "ZZ"}) {
 
     Eigen::MatrixXd term2PDM =
@@ -290,12 +307,12 @@ MC_VQE::getVQE2PDM(const std::vector<double>& x,
           for (int g = 0; g < nParams; g++) {
 
             tmp_x = x;
-            tmp_x[g] += PI_4;
+            tmp_x[g] += PI / 4.0;
             term2PDM(A, B) +=
                 vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
 
             tmp_x = x;
-            tmp_x[g] -= PI_4;
+            tmp_x[g] -= PI / 4.0;
             term2PDM(A, B) -=
                 vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
           }
@@ -311,8 +328,8 @@ MC_VQE::getVQE2PDM(const std::vector<double>& x,
 
 // compute multipliers w.r.t. contracted reference states
 std::vector<Eigen::MatrixXd>
-MC_VQE::getCRSMultipliers(const std::vector<double>& x,
-                          const std::vector<Eigen::VectorXd>& vqeMultipliers) {
+MC_VQE::getCRSMultipliers(const std::vector<double> &x,
+                          const std::vector<Eigen::MatrixXd> &vqeMultipliers) {
 
   // Jacobian Eq. 62
   auto jacobian = [](int M, int I, Eigen::VectorXd coefficients) {
@@ -364,7 +381,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
             // Eq. 132
 
             stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(M) += PI_4;
+            stateGateAngles(M) += PI / 4.0;
             kernel = statePreparationCircuit(stateGateAngles);
             kernel->addVariables(entangler->getVariables());
             for (auto &inst : entangler->getInstructions()) {
@@ -373,7 +390,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
             first += vqeWrapper(observable, kernel, x);
 
             stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(M) -= PI_4;
+            stateGateAngles(M) -= PI / 4.0;
             kernel = statePreparationCircuit(stateGateAngles);
             kernel->addVariables(entangler->getVariables());
             for (auto &inst : entangler->getInstructions()) {
@@ -385,7 +402,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
             // Eq. 133
 
             stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(2 * M - 1) += PI_4;
+            stateGateAngles(2 * M - 1) += PI / 4.0;
             kernel = statePreparationCircuit(stateGateAngles);
             kernel->addVariables(entangler->getVariables());
             for (auto &inst : entangler->getInstructions()) {
@@ -394,7 +411,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
             first -= vqeWrapper(observable, kernel, x);
 
             stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(2 * M - 1) -= PI_4;
+            stateGateAngles(2 * M - 1) -= PI / 4.0;
             kernel = statePreparationCircuit(stateGateAngles);
             kernel->addVariables(entangler->getVariables());
             for (auto &inst : entangler->getInstructions()) {
@@ -403,7 +420,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
             first += vqeWrapper(observable, kernel, x);
 
             stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(2 * M) += PI_4;
+            stateGateAngles(2 * M) += PI / 4.0;
             kernel = statePreparationCircuit(stateGateAngles);
             kernel->addVariables(entangler->getVariables());
             for (auto &inst : entangler->getInstructions()) {
@@ -412,7 +429,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
             first += vqeWrapper(observable, kernel, x);
 
             stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(2 * M) -= PI_4;
+            stateGateAngles(2 * M) -= PI / 4.0;
             kernel = statePreparationCircuit(stateGateAngles);
             kernel->addVariables(entangler->getVariables());
             for (auto &inst : entangler->getInstructions()) {
@@ -449,7 +466,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
 
             if (M = 0) {
               stateGateAngles = CISGateAngles.col(crs);
-              stateGateAngles(M) += 2.0 * PI_4;
+              stateGateAngles(M) += 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
               for (auto &inst : entangler->getInstructions()) {
@@ -458,7 +475,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
               sum += vqeWrapper(observable, kernel, x);
 
               stateGateAngles = CISGateAngles.col(crs);
-              stateGateAngles(M) -= 2.0 * PI_4;
+              stateGateAngles(M) -= 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
               for (auto &inst : entangler->getInstructions()) {
@@ -471,7 +488,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
             } else {
 
               stateGateAngles = gateAngles.col(crs);
-              stateGateAngles(2 * M - 1) += 2.0 * PI_4;
+              stateGateAngles(2 * M - 1) += 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
               for (auto &inst : entangler->getInstructions()) {
@@ -480,7 +497,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
               sum -= vqeWrapper(observable, kernel, x);
 
               stateGateAngles = gateAngles.col(crs);
-              stateGateAngles(2 * M - 1) -= 2.0 * PI_4;
+              stateGateAngles(2 * M - 1) -= 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
               for (auto &inst : entangler->getInstructions()) {
@@ -489,7 +506,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
               sum -= vqeWrapper(observable, kernel, x);
 
               stateGateAngles = gateAngles.col(crs);
-              stateGateAngles(2 * M) += 2.0 * PI_4;
+              stateGateAngles(2 * M) += 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
               for (auto &inst : entangler->getInstructions()) {
@@ -498,7 +515,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
               sum += vqeWrapper(observable, kernel, x);
 
               stateGateAngles = gateAngles.col(crs);
-              stateGateAngles(2 * M) -= 2.0 * PI_4;
+              stateGateAngles(2 * M) -= 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
               for (auto &inst : entangler->getInstructions()) {
@@ -550,18 +567,18 @@ MC_VQE::getCRSMultipliers(const std::vector<double>& x,
 }
 
 // compute CRS contribution to the relaxed 1PDM
-std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
-MC_VQE::getCRS1PDM(const std::vector<Eigen::MatrixXd>& cpCRSMultipliers) {
+std::map<std::string, std::vector<Eigen::MatrixXd>>
+MC_VQE::getCRS1PDM(const std::vector<Eigen::MatrixXd> &cpCRSMultipliers) {
 
   // Compute D Eq. 138
-  std::unordered_map<std::string, std::vector<Eigen::VectorXd>> CRS1PDM;
+  std::map<std::string, std::vector<Eigen::MatrixXd>> CRS1PDM;
 
   for (auto termStr : {"X", "Z"}) {
 
-    std::vector<Eigen::VectorXd> term1PDM;
+    std::vector<Eigen::MatrixXd> term1PDM;
     for (int state = 0; state < nStates; state++) {
 
-      Eigen::VectorXd stateDensityMatrix = Eigen::VectorXd::Zero(nChromophores);
+      Eigen::MatrixXd stateDensityMatrix = Eigen::VectorXd::Zero(nChromophores);
       for (int A = 0; A < nChromophores; A++) {
 
         double D = 0.0;
@@ -601,11 +618,11 @@ MC_VQE::getCRS1PDM(const std::vector<Eigen::MatrixXd>& cpCRSMultipliers) {
 }
 
 // compute CRS contribution to the relaxed 2PDM
-std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getCRS2PDM(const std::vector<Eigen::MatrixXd>& cpCRSMultipliers) {
+std::map<std::string, std::vector<Eigen::MatrixXd>>
+MC_VQE::getCRS2PDM(const std::vector<Eigen::MatrixXd> &cpCRSMultipliers) {
 
   // Compute D Eq. 138
-  std::unordered_map<std::string, std::vector<Eigen::MatrixXd>> CRS2PDM;
+  std::map<std::string, std::vector<Eigen::MatrixXd>> CRS2PDM;
 
   for (auto termStr : {"XX", "XZ", "ZX", "ZZ"}) {
 
@@ -659,11 +676,11 @@ MC_VQE::getCRS2PDM(const std::vector<Eigen::MatrixXd>& cpCRSMultipliers) {
   return CRS2PDM;
 }
 
-std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
+std::map<std::string, std::vector<Eigen::VectorXd>>
 MC_VQE::getMonomerGradient(
-    std::unordered_map<std::string, std::vector<Eigen::VectorXd>>& _1PDM) {
+    std::map<std::string, std::vector<Eigen::VectorXd>> &_1PDM) {
 
-  std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
+  std::map<std::string, std::vector<Eigen::VectorXd>>
       monomerGradients;
 
   // Eq. 143
@@ -693,15 +710,14 @@ MC_VQE::getMonomerGradient(
   return monomerGradients;
 }
 
-
 /*
 
 
 I'll come back here later
 
-std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
+std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getDimerInteractionGradient(
-    std::unordered_map<std::string, std::vector<Eigen::MatrixXd>> _2PDM) {
+    std::map<std::string, std::vector<Eigen::MatrixXd>> _2PDM) {
 
   // Eq. 147
   auto dipolePartial = [&](const Eigen::Vector3d mu, const Eigen::Vector3d r) {
@@ -723,7 +739,7 @@ MC_VQE::getDimerInteractionGradient(
     return ret;
   };
 
-  std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
       dimerInteractionGradients;
 
   for (auto termStr : {"H", "P", "T", "R"}) {

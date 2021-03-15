@@ -35,6 +35,40 @@ public:
 };
 
 class MC_VQE : public Algorithm {
+private:
+
+  // gets time stamp
+  double timer() const;
+
+  // prints messages for given log level
+  void logControl(const std::string message, const int level) const;
+
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
+  getUnrelaxed1PDM(const std::vector<double> &x);
+
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
+  getUnrelaxed2PDM(const std::vector<double> &x);
+
+  // calls the VQE objective function
+  double vqeWrapper(const std::shared_ptr<Observable> observable,
+                    const std::shared_ptr<CompositeInstruction> kernel,
+                    const std::vector<double> &x) const;
+
+  std::map<std::string, Eigen::MatrixXd>
+  getVQE1PDM(const std::vector<double> &, const std::vector<Eigen::MatrixXd> &);
+
+  std::map<std::string, Eigen::MatrixXd>
+  getVQE2PDM(const std::vector<double> &, const std::vector<Eigen::MatrixXd> &);
+
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
+  getCRS1PDM(const std::vector<Eigen::MatrixXd> &);
+
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
+  getCRS2PDM(const std::vector<Eigen::MatrixXd> &);
+
+  // implemented entanglers
+  const std::vector<std::string> entanglers = {"default", "trotterized", "Ry"};
+
 protected:
   Optimizer *optimizer;
   Accelerator *accelerator;
@@ -42,13 +76,10 @@ protected:
   std::shared_ptr<AlgorithmGradientStrategy> gradientStrategy;
 
   // MC-VQE variables
-
   // default gradient strategy
   std::string gradientStrategyName = "parameter-shift";
   // default entangler type
   std::string entanglerType = "default";
-  // implemented entanglers
-  const std::vector<std::string> entanglers = {"default", "trotterized", "Ry"};
   // vector of Monomers
   std::vector<Monomer> monomers;
   // number of chromophores
@@ -69,8 +100,6 @@ protected:
   std::shared_ptr<Observable> observable;
   // # number of CIS states = nChromophores + 1
   int nStates;
-  // number of parameters
-  mutable int nOptParams;
   // path to file with quantum chemistry data
   std::string dataPath;
   // entangler part of the circuit
@@ -81,14 +110,9 @@ protected:
   mutable std::ofstream logFile;
   // valid chromophore pairs (nearest neighbor)
   std::map<int, std::vector<int>> pairs;
-  // angstrom to bohr
-  //const double ANGSTROM2BOHR = 1.8897161646320724;
-  // D to a.u.
-  //const double DEBYE2AU = 0.393430307;
-  // pi/4
-  const double PI_4 = xacc::constants::pi / 4.0;
-  // pi/2
-  const double PI_2 = xacc::constants::pi / 2.0;
+  // pi
+  const double PI = xacc::constants::pi;
+
   // controls the level of printing
   int logLevel = 1;
   // controls whether TNQVM will print
@@ -103,7 +127,8 @@ protected:
   // compute AIEM Hamiltonian
   void computeAIEMHamiltonian();
   // compute subspace, contracted Hamiltonian
-  void computeSubspaceHamiltonian(Eigen::MatrixXd &, const std::vector<double> &) const;
+  void computeSubspaceHamiltonian(Eigen::MatrixXd &,
+                                  const std::vector<double> &) const;
 
   // constructs CIS state preparation circiuit
   std::shared_ptr<CompositeInstruction>
@@ -112,57 +137,47 @@ protected:
   // constructs entangler portion of MC-VQE circuit
   std::shared_ptr<CompositeInstruction> entanglerCircuit() const;
 
-  // gets angles for all states
+  // gets angles for states
   Eigen::MatrixXd
-  statePreparationAngles(const Eigen::MatrixXd &CoefficientMatrix);
-
-  // gets angles for a single state
-  Eigen::VectorXd
-  statePreparationAngles(const Eigen::VectorXd &CoefficientVector) const;
-
-  // calls the VQE objective function
-  double vqeWrapper(const std::shared_ptr<Observable> observable,
-                    const std::shared_ptr<CompositeInstruction> kernel,
-                    const std::vector<double> &x) const;
-
-  // gets time stamp
-  double timer() const;
-
-  // prints messages for given log level
-  void logControl(const std::string message, const int level) const;
+  statePreparationAngles(const Eigen::MatrixXd &coefficientMatrix) const;
 
   // response/gradient
-  std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
-  getUnrelaxed1PDM(const std::vector<double>& x);
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
+  getUnrelaxedDensityMatrices(const std::vector<double> &x) {
+    auto monomerDM = getUnrelaxed1PDM(x);
+    auto dimerDM = getUnrelaxed2PDM(x);
+    monomerDM.insert(dimerDM.begin(), dimerDM.end());
+    return monomerDM;
+  };
 
-  std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
-  getUnrelaxed2PDM(const std::vector<double>& x);
+  std::vector<Eigen::MatrixXd> getVQEMultipliers(const std::vector<double> &x);
 
-  std::vector<Eigen::VectorXd> getVQEMultipliers(const std::vector<double>& x);
-
-  std::unordered_map<std::string, Eigen::VectorXd>
-  getVQE1PDM(const std::vector<double>&, const std::vector<Eigen::VectorXd>&);
-
-  std::unordered_map<std::string, Eigen::MatrixXd>
-  getVQE2PDM(const std::vector<double>&, const std::vector<Eigen::VectorXd>&);
+  std::map<std::string, Eigen::MatrixXd>
+  getVQEDensityMatrices(const std::vector<double> &x, std::vector<Eigen::MatrixXd>& multipliers) {
+    auto monomerDM = getVQE1PDM(x, multipliers);
+    auto dimerDM = getVQE2PDM(x, multipliers);
+    monomerDM.insert(dimerDM.begin(), dimerDM.end());
+    return monomerDM;
+  };
 
   std::vector<Eigen::MatrixXd>
-  getCRSMultipliers(const std::vector<double>&,
-                    const std::vector<Eigen::VectorXd>&);
+  getCRSMultipliers(const std::vector<double> &,
+                    const std::vector<Eigen::MatrixXd> &);
 
-  std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
-  getCRS1PDM(const std::vector<Eigen::MatrixXd>&);
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
+  getCRSDensityMatrices(std::vector<Eigen::MatrixXd>& multipliers) {
+    auto monomerDM = getCRS1PDM(multipliers);
+    auto dimerDM = getCRS2PDM(multipliers);
+    monomerDM.insert(dimerDM.begin(), dimerDM.end());
+    return monomerDM;
+  };                    
 
-  std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
-  getCRS2PDM(const std::vector<Eigen::MatrixXd>&);
+  std::map<std::string, std::vector<Eigen::VectorXd>>
+  getMonomerGradient(std::map<std::string, std::vector<Eigen::VectorXd>> &);
 
-  std::unordered_map<std::string, std::vector<Eigen::VectorXd>>
-      getMonomerGradient(
-          std::unordered_map<std::string, std::vector<Eigen::VectorXd>>&);
-
-  std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>
-      getDimerInteractionGradient(
-          std::unordered_map<std::string, std::vector<Eigen::MatrixXd>>&);
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
+  getDimerInteractionGradient(
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &);
 
 public:
   bool initialize(const HeterogeneousMap &parameters) override;
@@ -170,9 +185,6 @@ public:
   void execute(const std::shared_ptr<AcceleratorBuffer> buffer) const override;
   std::vector<double> execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                               const std::vector<double> &parameters) override;
-  void minimizeGradients(HeterogeneousMap &parameters,
-                         std::shared_ptr<AcceleratorBuffer> buffer);
-     const std::string name2() const { return "mc-vqe"; }                      
   const std::string name() const override { return "mc-vqe"; }
   const std::string description() const override { return ""; }
   DEFINE_ALGORITHM_CLONE(MC_VQE)

@@ -59,14 +59,13 @@ public:
       std::getline(file, line);
       auto excitedStateEnergy = std::stod(line.substr(line.find(":") + 1));
 
-
       std::getline(file, line);
       tmp = line.substr(line.find(":") + 1);
       std::stringstream centerOfMassStream(tmp);
       Eigen::Vector3d centerOfMass = Eigen::Vector3d::Zero();
       xyz = 0;
       while (std::getline(centerOfMassStream, comp, ',')) {
-        centerOfMass(xyz++) = std::stod(comp);// * ANGSTROM2BOHR;
+        centerOfMass(xyz++) = std::stod(comp); // * ANGSTROM2BOHR;
       }
 
       std::getline(file, line);
@@ -75,7 +74,7 @@ public:
       std::stringstream gsDipoleStream(tmp);
       xyz = 0;
       while (std::getline(gsDipoleStream, comp, ',')) {
-        groundStateDipole(xyz++) = std::stod(comp);// * DEBYE2AU;
+        groundStateDipole(xyz++) = std::stod(comp); // * DEBYE2AU;
       }
 
       std::getline(file, line);
@@ -84,7 +83,7 @@ public:
       Eigen::Vector3d excitedStateDipole = Eigen::Vector3d::Zero();
       xyz = 0;
       while (std::getline(esDipoleStream, comp, ',')) {
-        excitedStateDipole(xyz++) = std::stod(comp);// * DEBYE2AU;
+        excitedStateDipole(xyz++) = std::stod(comp); // * DEBYE2AU;
       }
 
       std::getline(file, line);
@@ -99,7 +98,6 @@ public:
       Monomer m(groundStateEnergy, excitedStateEnergy, groundStateDipole,
                 excitedStateDipole, transitionDipole, centerOfMass);
       monomers.push_back(m);
-
     }
     file.close();
     return;

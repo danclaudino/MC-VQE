@@ -99,7 +99,7 @@ MC_VQE::entanglerCircuit() const {
       varNames.push_back(varName);
       gates.push_back(ry);
 
-      auto rx2 = provider->createInstruction("U", {control}, {PI_2, 3 * PI_2, PI_2});
+      auto rx2 = provider->createInstruction("U", {control}, {PI / 2.0, 3.0 * PI / 2.0, PI / 2.0});
       gates.push_back(rx2);
 
       auto h = provider->createInstruction("H", {target});
@@ -130,10 +130,10 @@ MC_VQE::entanglerCircuit() const {
       cnot = provider->createInstruction("CNOT", {control, target});
       gates.push_back(cnot);
 
-      auto rx2T = provider->createInstruction("U", {control}, {PI_2, PI_2, 3 * PI_2});
+      auto rx2T = provider->createInstruction("U", {control}, {PI / 2.0, PI / 2.0, 3 * PI / 2.0});
       gates.push_back(rx2T);
 
-      rx2 = provider->createInstruction("U", {target}, {PI_2, 3 * PI_2, PI_2});
+      rx2 = provider->createInstruction("U", {target}, {PI / 2.0, 3.0 * PI / 2.0, PI / 2.0});
       gates.push_back(rx2);
 
       cnot = provider->createInstruction("CNOT", {control, target});
@@ -164,22 +164,13 @@ MC_VQE::entanglerCircuit() const {
       h = provider->createInstruction("H", {control});
       gates.push_back(h);
 
-      rx2T = provider->createInstruction("U", {target}, {PI_2, PI_2, 3 * PI_2});
+      rx2T = provider->createInstruction("U", {target}, {PI / 2.0, PI / 2.0, 3.0 * PI / 2.0});
       gates.push_back(rx2T);
 
       entanglerCircuit->addVariables(varNames);
       entanglerCircuit->addInstructions(gates);
     };
 
-/*
-     // placing the first Ry's in the circuit
-    for (std::size_t i = 0; i < nChromophores; i++) {
-      std::string varName = "x" + std::to_string(varIdx++);
-      auto ry = provider->createInstruction("Ry", {i}, {varName});
-      entanglerCircuit->addVariable(varName);
-      entanglerCircuit->addInstruction(ry);
-    }
-*/
     // placing the entanglerGates in the circuit
     for (int layer : {0, 1}) {
       for (int i = layer; i < nChromophores - layer; i += 2) {

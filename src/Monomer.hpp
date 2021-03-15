@@ -61,7 +61,7 @@ public:
   double getS() { return 0.5 * (_groundStateEnergy + _excitedStateEnergy); }
   double getD() { return 0.5 * (_groundStateEnergy - _excitedStateEnergy); }
   double getE() { return _excitedStateEnergy; }
-  
+
   Eigen::Vector3d getDipoleSum() {
     return 0.5 * (_groundStateDipole + _excitedStateDipole);
   }

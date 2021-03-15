@@ -172,7 +172,7 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
   std::vector<double> optHistory;
 
   // all CIS states share the same parameterized entangler gates
-  nOptParams = entangler->nVariables();
+  auto nOptParams = entangler->nVariables();
 
   double oldAverageEnergy = 0.0;
   // f is the objective function
@@ -430,7 +430,7 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(
         entangledHamiltonian);
     auto MC_VQE_Energies = EigenSolver.eigenvalues();
-    auto MC_VQE_States = EigenSolver.eigenvectors();
+    subSpaceRotation = EigenSolver.eigenvectors();
 
     std::stringstream ss;
     ss << "MC-VQE energy spectrum";
@@ -445,7 +445,18 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                                  MC_VQE_Energies.data() +
                                      MC_VQE_Energies.size());
 
-    // auto dm = getUnrelaxed1PDM(x);
+
+/*
+    auto dm = getUnrelaxedDensityMatrices(x);
+    for (int s = 0 ; s < nStates; s++ ) {
+      std::cout << dm["X"][s] << "\n\n";
+      std::cout << dm["Z"][s] << "\n\n";
+      std::cout << dm["XX"][s] << "\n\n";
+      std::cout << dm["XZ"][s] << "\n\n";
+      std::cout << dm["ZX"][s] << "\n\n";
+      std::cout << dm["ZZ"][s] << "\n\n";
+    }
+  */
     return spectrum;
   } else {
     return {};
@@ -517,5 +528,3 @@ double MC_VQE::timer() const {
 
 } // namespace algorithm
 } // namespace xacc
-
-// REGISTER_ALGORITHM(xacc::algorithm::MC_VQE)

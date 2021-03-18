@@ -141,8 +141,8 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
       tmp_x = x;
       tmp_x[g] -= PI / 2.0;
       stateMultipliers(g) -= vqeWrapper(observable, kernel, tmp_x);
-    }
 
+    }
     gradients.push_back(stateMultipliers);
   }
 
@@ -158,22 +158,23 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
     }
 
     // diagonal Hessian elements
+    Eigen::MatrixXd stateHessian = Eigen::MatrixXd::Zero(nParams, nParams);
     for (int g = 0; g < nParams; g++) {
 
       // Eq. 125 term #1
       tmp_x = x;
       tmp_x[g] += PI;
-      hessian(g, g) += vqeWrapper(observable, kernel, tmp_x);
+      auto p = vqeWrapper(observable, kernel, tmp_x);
 
       // Eq. 125 term #2
-      // hessian(g, g) += 2.0*vqeWrapper(observable, kernel, x);
-      hessian(g, g) -= 2.0 * vqeWrapper(observable, kernel, x);
+      auto z =  -2.0 * vqeWrapper(observable, kernel, x);
 
       // Eq. 125 term #3
       tmp_x = x;
       tmp_x[g] -= PI;
-      // hessian(g, g) -= vqeWrapper(observable, kernel, tmp_x);
-      hessian(g, g) += vqeWrapper(observable, kernel, tmp_x);
+      auto m = vqeWrapper(observable, kernel, tmp_x);
+
+      stateHessian(g, g) = p + z + m;
     }
 
     // off-diagonal Hessian elements
@@ -184,32 +185,33 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
         tmp_x = x;
         tmp_x[g] += PI / 2.0;
         tmp_x[gp] += PI / 2.0;
-        hessian(g, gp) += vqeWrapper(observable, kernel, tmp_x);
+        auto pp = vqeWrapper(observable, kernel, tmp_x);
 
         // Eq. 126 term #2
         tmp_x = x;
         tmp_x[g] += PI / 2.0;
         tmp_x[gp] -= PI / 2.0;
-        hessian(g, gp) -= vqeWrapper(observable, kernel, tmp_x);
+        auto pm = vqeWrapper(observable, kernel, tmp_x);
 
         // Eq. 126 term #3
         tmp_x = x;
         tmp_x[g] -= PI / 2.0;
         tmp_x[gp] += PI / 2.0;
-        hessian(g, gp) -= vqeWrapper(observable, kernel, tmp_x);
+        auto mp = vqeWrapper(observable, kernel, tmp_x);
 
         // Eq. 126 term #4
         tmp_x = x;
         tmp_x[g] -= PI / 2.0;
         tmp_x[gp] -= PI / 2.0;
-        hessian(g, gp) += vqeWrapper(observable, kernel, tmp_x);
+        auto mm = vqeWrapper(observable, kernel, tmp_x);
 
-        hessian(gp, g) = hessian(g, gp);
+        stateHessian(g, gp) = stateHessian(gp, g) = pp - pm - mp + mm;
       }
     }
+    hessian += stateHessian;
   }
-
   hessian /= nStates;
+
   // Eq. 127
   std::vector<Eigen::MatrixXd> vqeMultipliers;
   for (int state = 0; state < nStates; state++) {

@@ -445,18 +445,6 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                                  MC_VQE_Energies.data() +
                                      MC_VQE_Energies.size());
 
-
-/*
-    auto dm = getUnrelaxedDensityMatrices(x);
-    for (int s = 0 ; s < nStates; s++ ) {
-      std::cout << dm["X"][s] << "\n\n";
-      std::cout << dm["Z"][s] << "\n\n";
-      std::cout << dm["XX"][s] << "\n\n";
-      std::cout << dm["XZ"][s] << "\n\n";
-      std::cout << dm["ZX"][s] << "\n\n";
-      std::cout << dm["ZZ"][s] << "\n\n";
-    }
-  */
     return spectrum;
   } else {
     return {};

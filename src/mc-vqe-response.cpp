@@ -1,8 +1,8 @@
 #include "PauliOperator.hpp"
 #include "mc-vqe.hpp"
 #include "xacc.hpp"
-#include <memory>
 #include <map>
+#include <memory>
 #include <vector>
 
 using namespace xacc;
@@ -141,7 +141,6 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
       tmp_x = x;
       tmp_x[g] -= PI / 2.0;
       stateMultipliers(g) -= vqeWrapper(observable, kernel, tmp_x);
-
     }
     gradients.push_back(stateMultipliers);
   }
@@ -167,7 +166,7 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
       auto p = vqeWrapper(observable, kernel, tmp_x);
 
       // Eq. 125 term #2
-      auto z =  -2.0 * vqeWrapper(observable, kernel, x);
+      auto z = -2.0 * vqeWrapper(observable, kernel, x);
 
       // Eq. 125 term #3
       tmp_x = x;
@@ -223,26 +222,20 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
 }
 
 // compute CP-SA-VQE 1PDM
-// this is a state-averaged density matrix
-// hence all elements for a given state is the same
-// and instead of a vector<Eigen::Vector>
-// we have only an Eigen::Vector
-std::map<std::string, Eigen::MatrixXd>
+std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getVQE1PDM(const std::vector<double> &x,
                    const std::vector<Eigen::MatrixXd> &vqeMultipliers) {
 
   // Eq. 128
   auto nParams = x.size();
   std::vector<double> tmp_x;
-  std::map<std::string, Eigen::MatrixXd> vqe1PDM;
+  std::map<std::string, std::vector<Eigen::MatrixXd>> vqe1PDM;
   for (auto termStr : {"X", "Z"}) {
 
-    Eigen::MatrixXd term1PDM = Eigen::VectorXd::Zero(nChromophores);
-    for (int A = 0; A < nChromophores; A++) {
+    std::vector<Eigen::MatrixXd> stateAveraged1PDM;
+    for (int mcState = 0; mcState < nStates; mcState++) {
 
-      auto term =
-          std::make_shared<PauliOperator>(PauliOperator({{A, termStr}}));
-
+      Eigen::MatrixXd term1PDM = Eigen::VectorXd::Zero(nChromophores);
       // sum over all states
       for (int state = 0; state < nStates; state++) {
 
@@ -252,79 +245,101 @@ MC_VQE::getVQE1PDM(const std::vector<double> &x,
         for (auto &inst : entangler->getInstructions()) {
           kernel->addInstruction(inst);
         }
+        for (int A = 0; A < nChromophores; A++) {
 
-        // sum over all VQE parameters
-        for (int g = 0; g < nParams; g++) {
-          tmp_x = x;
-          tmp_x[g] += PI / 4.0;
-          term1PDM(A) +=
-              vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
+          auto term =
+              std::make_shared<PauliOperator>(PauliOperator({{A, termStr}}));
+          // sum over all VQE parameters
+          for (int g = 0; g < nParams; g++) {
 
-          tmp_x = x;
-          tmp_x[g] -= PI / 4.0;
-          term1PDM(A) -=
-              vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
+            tmp_x = x;
+            tmp_x[g] += PI / 2.0;
+            term1PDM(A) +=
+                vqeMultipliers[mcState](g) * vqeWrapper(term, kernel, tmp_x);
+
+            tmp_x = x;
+            tmp_x[g] -= PI / 2.0;
+            term1PDM(A) -=
+                vqeMultipliers[mcState](g) * vqeWrapper(term, kernel, tmp_x);
+          }
         }
       }
+      stateAveraged1PDM.push_back(term1PDM / nStates);
     }
-    // average over states
-    term1PDM /= nStates;
-    vqe1PDM.emplace(termStr, term1PDM);
+    vqe1PDM.emplace(termStr, stateAveraged1PDM);
   }
+
   return vqe1PDM;
 }
 
-std::map<std::string, Eigen::MatrixXd>
+// compute CP-SA-VQE 2PDM
+std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getVQE2PDM(const std::vector<double> &x,
                    const std::vector<Eigen::MatrixXd> &vqeMultipliers) {
 
   // Eq. 128
   auto nParams = x.size();
   std::vector<double> tmp_x;
-  std::map<std::string, Eigen::MatrixXd> vqe2PDM;
-  for (auto termStr : {"XX", "XZ", "ZX", "ZZ"}) {
+  std::map<std::string, std::vector<Eigen::MatrixXd>> vqe2PDM;
+  for (auto termStr : {"XX", "XZ", "ZZ"}) {
 
-    Eigen::MatrixXd term2PDM =
-        Eigen::MatrixXd::Zero(nChromophores, nChromophores);
+    std::vector<Eigen::MatrixXd> stateAveraged2PDM;
+    for (int mcState = 0; mcState < nStates; mcState++) {
 
-    for (int A = 0; A < nChromophores; A++) {
+      Eigen::MatrixXd term2PDM =
+          Eigen::MatrixXd::Zero(nChromophores, nChromophores);
+      // sum over all states
+      for (int state = 0; state < nStates; state++) {
 
-      for (int B : pairs[A]) {
+        // prepare interference state and append entangler
+        auto kernel = statePreparationCircuit(CISGateAngles.col(state));
+        kernel->addVariables(entangler->getVariables());
+        for (auto &inst : entangler->getInstructions()) {
+          kernel->addInstruction(inst);
+        }
+        for (int A = 0; A < nChromophores; A++) {
 
-        std::string term1 = {termStr[0]}, term2 = {termStr[1]};
-        auto term = std::make_shared<PauliOperator>(
-            PauliOperator({{A, term1}, {B, term2}}));
+          for (auto B : pairs[A]) {
 
-        // sum over all states
-        for (int state = 0; state < nStates; state++) {
+            if (((termStr == "XX") || (termStr == "ZZ")) && (B < A)) {
+              continue;
+            }
+            std::string term1 = {termStr[0]}, term2 = {termStr[1]};
+            auto term = std::make_shared<PauliOperator>(
+                PauliOperator({{A, term1}, {B, term2}}));
+            // sum over all VQE parameters
+            for (int g = 0; g < nParams; g++) {
 
-          // prepare interference state and append entangler
-          auto kernel = statePreparationCircuit(CISGateAngles.col(state));
-          kernel->addVariables(entangler->getVariables());
-          for (auto &inst : entangler->getInstructions()) {
-            kernel->addInstruction(inst);
-          }
+              tmp_x = x;
+              tmp_x[g] += PI / 2.0;
+              term2PDM(A, B) +=
+                  vqeMultipliers[mcState](g) * vqeWrapper(term, kernel, tmp_x);
 
-          // sum over all VQE parameters
-          for (int g = 0; g < nParams; g++) {
+              tmp_x = x;
+              tmp_x[g] -= PI / 2.0;
+              term2PDM(A, B) -=
+                  vqeMultipliers[mcState](g) * vqeWrapper(term, kernel, tmp_x);
+            }
 
-            tmp_x = x;
-            tmp_x[g] += PI / 4.0;
-            term2PDM(A, B) +=
-                vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
-
-            tmp_x = x;
-            tmp_x[g] -= PI / 4.0;
-            term2PDM(A, B) -=
-                vqeMultipliers[state](g) * vqeWrapper(term, kernel, tmp_x);
+            if ((termStr == "XX") || (termStr == "ZZ")) {
+              term2PDM(B, A) = term2PDM(A, B);
+            }
           }
         }
       }
+      stateAveraged2PDM.push_back(term2PDM / nStates);
     }
-    // average over states
-    term2PDM /= nStates;
-    vqe2PDM.emplace(termStr, term2PDM);
+    vqe2PDM.emplace(termStr, stateAveraged2PDM);
+
+    if (termStr == "XZ") {
+      std::vector<Eigen::MatrixXd> term2PDM;
+      for (auto &dm : vqe2PDM["XZ"]) {
+        term2PDM.push_back(dm.transpose());
+      }
+      vqe2PDM.emplace("ZX", term2PDM);
+    }
   }
+
   return vqe2PDM;
 }
 
@@ -678,12 +693,10 @@ MC_VQE::getCRS2PDM(const std::vector<Eigen::MatrixXd> &cpCRSMultipliers) {
   return CRS2PDM;
 }
 
-std::map<std::string, std::vector<Eigen::VectorXd>>
-MC_VQE::getMonomerGradient(
+std::map<std::string, std::vector<Eigen::VectorXd>> MC_VQE::getMonomerGradient(
     std::map<std::string, std::vector<Eigen::VectorXd>> &_1PDM) {
 
-  std::map<std::string, std::vector<Eigen::VectorXd>>
-      monomerGradients;
+  std::map<std::string, std::vector<Eigen::VectorXd>> monomerGradients;
 
   // Eq. 143
 
@@ -887,6 +900,7 @@ MC_VQE::getDimerInteractionGradient(
 }
 
 */
+
 
 } // namespace algorithm
 } // namespace xacc

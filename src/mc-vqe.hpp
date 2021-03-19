@@ -54,10 +54,10 @@ private:
                     const std::shared_ptr<CompositeInstruction> kernel,
                     const std::vector<double> &x) const;
 
-  std::map<std::string, Eigen::MatrixXd>
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
   getVQE1PDM(const std::vector<double> &, const std::vector<Eigen::MatrixXd> &);
 
-  std::map<std::string, Eigen::MatrixXd>
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
   getVQE2PDM(const std::vector<double> &, const std::vector<Eigen::MatrixXd> &);
 
   std::map<std::string, std::vector<Eigen::MatrixXd>>
@@ -152,7 +152,7 @@ protected:
 
   std::vector<Eigen::MatrixXd> getVQEMultipliers(const std::vector<double> &x);
 
-  std::map<std::string, Eigen::MatrixXd>
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
   getVQEDensityMatrices(const std::vector<double> &x, std::vector<Eigen::MatrixXd>& multipliers) {
     auto monomerDM = getVQE1PDM(x, multipliers);
     auto dimerDM = getVQE2PDM(x, multipliers);

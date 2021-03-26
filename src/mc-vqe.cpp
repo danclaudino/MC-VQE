@@ -193,10 +193,7 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
           // retrieve CIS state preparation instructions and add entangler
           auto kernel = statePreparationCircuit(CISGateAngles.col(state));
           kernel->addVariables(entangler->getVariables());
-          for (auto &inst : entangler->getInstructions()) {
-            kernel->addInstruction(inst);
-          }
-          // std::cout << kernel->getVariables() << "\n";
+          kernel->addInstructions(entangler->getInstructions());
 
           logControl("Circuit preparation for state # " +
                          std::to_string(state) + " [" +
@@ -387,9 +384,7 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
     auto kernel = statePreparationCircuit(CISGateAngles.col(state));
     // add entangler variables
     kernel->addVariables(entangler->getVariables());
-    for (auto &inst : entangler->getInstructions()) {
-      kernel->addInstruction(inst); // append entangler gates
-    }
+    kernel->addInstructions(entangler->getInstructions());
 
     depth = kernel->depth();
     nGates = kernel->nInstructions();
@@ -445,6 +440,22 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                                  MC_VQE_Energies.data() +
                                      MC_VQE_Energies.size());
 
+
+    auto g = getVQEMultipliers(x);
+    auto pqp = getCRSMultipliers(x, g);
+/*
+    auto g = getVQEMultipliers(x);
+
+    auto dm = getUnrelaxedDensityMatrices(x);
+    for (int s = 0 ; s < nStates; s++ ) {
+      std::cout << dm["X"][s] << "\n\n";
+      std::cout << dm["Z"][s] << "\n\n";
+      std::cout << dm["XX"][s] << "\n\n";
+      std::cout << dm["XZ"][s] << "\n\n";
+      std::cout << dm["ZX"][s] << "\n\n";
+      std::cout << dm["ZZ"][s] << "\n\n";
+    }
+  */
     return spectrum;
   } else {
     return {};

@@ -32,9 +32,7 @@ MC_VQE::getUnrelaxed1PDM(const std::vector<double> &x) {
       // prepare interference state and append entangler
       auto kernel = statePreparationCircuit(gateAngles.col(state));
       kernel->addVariables(entangler->getVariables());
-      for (auto &inst : entangler->getInstructions()) {
-        kernel->addInstruction(inst);
-      }
+      kernel->addInstructions(entangler->getInstructions());
 
       // loop over chromophores and compute <term>
       // stateDensityMatrix stores 1PDM elements for each chromophore in state
@@ -72,9 +70,7 @@ MC_VQE::getUnrelaxed2PDM(const std::vector<double> &x) {
       // prepare interference state and append entangler
       auto kernel = statePreparationCircuit(gateAngles.col(state));
       kernel->addVariables(entangler->getVariables());
-      for (auto &inst : entangler->getInstructions()) {
-        kernel->addInstruction(inst);
-      }
+      kernel->addInstructions(entangler->getInstructions());
 
       // loop over chromophores and compute <term>
       // stateDensityMatrix stores 1PDM elements for each chromophore in state
@@ -128,9 +124,7 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
     // prepare interference state and append entangler
     auto kernel = statePreparationCircuit(gateAngles.col(state));
     kernel->addVariables(entangler->getVariables());
-    for (auto &inst : entangler->getInstructions()) {
-      kernel->addInstruction(inst);
-    }
+    kernel->addInstructions(entangler->getInstructions());
 
     Eigen::MatrixXd stateMultipliers = Eigen::VectorXd::Zero(nParams);
     for (int g = 0; g < nParams; g++) {
@@ -152,9 +146,7 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
     // prepare interference state and append entangler
     auto kernel = statePreparationCircuit(CISGateAngles.col(state));
     kernel->addVariables(entangler->getVariables());
-    for (auto &inst : entangler->getInstructions()) {
-      kernel->addInstruction(inst);
-    }
+    kernel->addInstructions(entangler->getInstructions());
 
     // diagonal Hessian elements
     Eigen::MatrixXd stateHessian = Eigen::MatrixXd::Zero(nParams, nParams);
@@ -242,9 +234,7 @@ MC_VQE::getVQE1PDM(const std::vector<double> &x,
         // prepare interference state and append entangler
         auto kernel = statePreparationCircuit(CISGateAngles.col(state));
         kernel->addVariables(entangler->getVariables());
-        for (auto &inst : entangler->getInstructions()) {
-          kernel->addInstruction(inst);
-        }
+        kernel->addInstructions(entangler->getInstructions());
         for (int A = 0; A < nChromophores; A++) {
 
           auto term =
@@ -294,9 +284,7 @@ MC_VQE::getVQE2PDM(const std::vector<double> &x,
         // prepare interference state and append entangler
         auto kernel = statePreparationCircuit(CISGateAngles.col(state));
         kernel->addVariables(entangler->getVariables());
-        for (auto &inst : entangler->getInstructions()) {
-          kernel->addInstruction(inst);
-        }
+        kernel->addInstructions(entangler->getInstructions());
         for (int A = 0; A < nChromophores; A++) {
 
           for (auto B : pairs[A]) {
@@ -352,17 +340,18 @@ MC_VQE::getCRSMultipliers(const std::vector<double> &x,
   auto jacobian = [](int M, int I, Eigen::VectorXd coefficients) {
     auto size = coefficients.size();
     double ret = 0.0;
+
+    if (M == I) {
+      ret -= 1.0 / coefficients.tail(size - M - 1).norm();
+    }
+
     if (I >= M) {
       ret += coefficients(M) * coefficients(I) /
-             (coefficients.segment(M + 1, size - M + 1).norm() *
-              coefficients.segment(M, size - M + 1).squaredNorm());
+             (coefficients.tail(size - M - 1).norm() *
+              coefficients.tail(size - M).squaredNorm());
     }
 
-    if (I == M) {
-      ret -= 1.0 / coefficients.segment(M + 1, size - M + 1).norm();
-    }
-
-    if (M == size - 1 && coefficients(size) < 0.0) {
+    if (M == size - 1 && coefficients(size - 1) < 0.0) {
       return -ret;
     } else {
       return ret;
@@ -377,95 +366,73 @@ MC_VQE::getCRSMultipliers(const std::vector<double> &x,
 
   // compute the terms separately then multiply
   // Eq. 131
-  // loop over multicontracted/interference states
-  for (int mc = 0; mc < nStates; mc++) {
+  // compute angle gradients
+  Eigen::MatrixXd stateAngleGrad =
+      Eigen::MatrixXd::Zero(gateAngles.rows() - 1, nStates);
+  for (int state = 0; state < nStates; state++) {
 
-    Eigen::MatrixXd stateGrad = Eigen::MatrixXd::Zero(nStates, nStates);
+    for (int M = 0; M < gateAngles.rows() - 1; M++) {
 
-    // loop over CRSs states
-    for (int crs = 0; crs < nStates; crs++) {
+      double angleGrad = 0.0;
+      // Eq. 132
+      if (M == 0) {
 
-      // loop over CIS states
-      for (int ci = 0; ci < nStates; ci++) {
+        stateGateAngles = gateAngles.col(state);
+        stateGateAngles(M) += PI / 2.0;
+        kernel = statePreparationCircuit(stateGateAngles);
+        kernel->addVariables(entangler->getVariables());
+        kernel->addInstructions(entangler->getInstructions());
+        angleGrad -= vqeWrapper(observable, kernel, x);
 
-        double grad = 0.0;
+        stateGateAngles = gateAngles.col(state);
+        stateGateAngles(M) -= PI / 2.0;
+        kernel = statePreparationCircuit(stateGateAngles);
+        kernel->addVariables(entangler->getVariables());
+        kernel->addInstructions(entangler->getInstructions());
+        angleGrad += vqeWrapper(observable, kernel, x);
 
-        // loop over CIS angles (M)
-        for (int M = 0; M < nStates - 1; M++) {
+        // Eq. 133
+      } else {
 
-          double first = 0.0;
-          if (M == 0) {
-            // Eq. 132
+        stateGateAngles = gateAngles.col(state);
+        stateGateAngles(2 * M - 1) += PI;
+        kernel = statePreparationCircuit(stateGateAngles);
+        kernel->addVariables(entangler->getVariables());
+        kernel->addInstructions(entangler->getInstructions());
+        angleGrad += vqeWrapper(observable, kernel, x);
 
-            stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(M) += PI / 4.0;
-            kernel = statePreparationCircuit(stateGateAngles);
-            kernel->addVariables(entangler->getVariables());
-            for (auto &inst : entangler->getInstructions()) {
-              kernel->addInstruction(inst);
-            }
-            first += vqeWrapper(observable, kernel, x);
+        stateGateAngles = gateAngles.col(state);
+        stateGateAngles(2 * M - 1) -= PI;
+        kernel = statePreparationCircuit(stateGateAngles);
+        kernel->addVariables(entangler->getVariables());
+        kernel->addInstructions(entangler->getInstructions());
+        angleGrad -= vqeWrapper(observable, kernel, x);
 
-            stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(M) -= PI / 4.0;
-            kernel = statePreparationCircuit(stateGateAngles);
-            kernel->addVariables(entangler->getVariables());
-            for (auto &inst : entangler->getInstructions()) {
-              kernel->addInstruction(inst);
-            }
-            first -= vqeWrapper(observable, kernel, x);
+        stateGateAngles = gateAngles.col(state);
+        stateGateAngles(2 * M) += PI;
+        kernel = statePreparationCircuit(stateGateAngles);
+        kernel->addVariables(entangler->getVariables());
+        kernel->addInstructions(entangler->getInstructions());
+        angleGrad += vqeWrapper(observable, kernel, x);
 
-          } else {
-            // Eq. 133
+        stateGateAngles = gateAngles.col(state);
+        stateGateAngles(2 * M) -= PI;
+        kernel = statePreparationCircuit(stateGateAngles);
+        kernel->addVariables(entangler->getVariables());
+        kernel->addInstructions(entangler->getInstructions());
+        angleGrad -= vqeWrapper(observable, kernel, x);
+        angleGrad /= 2.0;
+      }
 
-            stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(2 * M - 1) += PI / 4.0;
-            kernel = statePreparationCircuit(stateGateAngles);
-            kernel->addVariables(entangler->getVariables());
-            for (auto &inst : entangler->getInstructions()) {
-              kernel->addInstruction(inst);
-            }
-            first -= vqeWrapper(observable, kernel, x);
+      stateAngleGrad(M, state) = angleGrad;
 
-            stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(2 * M - 1) -= PI / 4.0;
-            kernel = statePreparationCircuit(stateGateAngles);
-            kernel->addVariables(entangler->getVariables());
-            for (auto &inst : entangler->getInstructions()) {
-              kernel->addInstruction(inst);
-            }
-            first += vqeWrapper(observable, kernel, x);
-
-            stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(2 * M) += PI / 4.0;
-            kernel = statePreparationCircuit(stateGateAngles);
-            kernel->addVariables(entangler->getVariables());
-            for (auto &inst : entangler->getInstructions()) {
-              kernel->addInstruction(inst);
-            }
-            first += vqeWrapper(observable, kernel, x);
-
-            stateGateAngles = gateAngles.col(mc);
-            stateGateAngles(2 * M) -= PI / 4.0;
-            kernel = statePreparationCircuit(stateGateAngles);
-            kernel->addVariables(entangler->getVariables());
-            for (auto &inst : entangler->getInstructions()) {
-              kernel->addInstruction(inst);
-            }
-            first -= vqeWrapper(observable, kernel, x);
-
-            first /= 2.0;
-          }
-
-          grad += first * jacobian(M, ci, rotatedEigenstates.col(mc));
-        }
-
-        stateGrad(ci, crs) = grad * subSpaceRotation(crs, mc);
+      for (int I = 0; I < nStates + 1; I++) {
+        std::cout << jacobian(M, I, rotatedEigenstates.col(state)) << "\n";
       }
     }
-    gradients.push_back(stateGrad);
   }
 
+  exit(0);
   // Eq. 134
   auto nParams = x.size();
   for (int mc = 0; mc < nStates; mc++) {
@@ -486,18 +453,14 @@ MC_VQE::getCRSMultipliers(const std::vector<double> &x,
               stateGateAngles(M) += 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
-              for (auto &inst : entangler->getInstructions()) {
-                kernel->addInstruction(inst);
-              }
+              kernel->addInstructions(entangler->getInstructions());
               sum += vqeWrapper(observable, kernel, x);
 
               stateGateAngles = CISGateAngles.col(crs);
               stateGateAngles(M) -= 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
-              for (auto &inst : entangler->getInstructions()) {
-                kernel->addInstruction(inst);
-              }
+              kernel->addInstructions(entangler->getInstructions());
               sum += vqeWrapper(observable, kernel, x);
 
               sum -= 2.0 * diagonal(crs);
@@ -508,42 +471,35 @@ MC_VQE::getCRSMultipliers(const std::vector<double> &x,
               stateGateAngles(2 * M - 1) += 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
-              for (auto &inst : entangler->getInstructions()) {
-                kernel->addInstruction(inst);
-              }
+              kernel->addInstructions(entangler->getInstructions());
               sum -= vqeWrapper(observable, kernel, x);
 
               stateGateAngles = gateAngles.col(crs);
               stateGateAngles(2 * M - 1) -= 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
-              for (auto &inst : entangler->getInstructions()) {
-                kernel->addInstruction(inst);
-              }
+              kernel->addInstructions(entangler->getInstructions());
               sum -= vqeWrapper(observable, kernel, x);
 
               stateGateAngles = gateAngles.col(crs);
               stateGateAngles(2 * M) += 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
-              for (auto &inst : entangler->getInstructions()) {
-                kernel->addInstruction(inst);
-              }
+              kernel->addInstructions(entangler->getInstructions());
               sum += vqeWrapper(observable, kernel, x);
 
               stateGateAngles = gateAngles.col(crs);
               stateGateAngles(2 * M) -= 2.0 * PI / 4.0;
               kernel = statePreparationCircuit(stateGateAngles);
               kernel->addVariables(entangler->getVariables());
-              for (auto &inst : entangler->getInstructions()) {
-                kernel->addInstruction(inst);
-              }
+              kernel->addInstructions(entangler->getInstructions());
               sum += vqeWrapper(observable, kernel, x);
 
               sum /= 2.0;
             }
 
-            sum *= jacobian(M, ci, gateAngles.col(crs)) * vqeMultipliers[mc](g);
+            // sum *= jacobian(M, ci, gateAngles.col(crs)) *
+            // vqeMultipliers[mc](g);
 
           } // M loop
         }   // g loop
@@ -900,7 +856,6 @@ MC_VQE::getDimerInteractionGradient(
 }
 
 */
-
 
 } // namespace algorithm
 } // namespace xacc

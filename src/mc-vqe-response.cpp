@@ -351,7 +351,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double> &x,
               coefficients.tail(size - M).squaredNorm());
     }
 
-    if (M == size - 1 && coefficients(size - 1) < 0.0) {
+    if ((M == size - 1) && (coefficients(Eigen::last) < 0.0)) {
       return -ret;
     } else {
       return ret;
@@ -367,9 +367,11 @@ MC_VQE::getCRSMultipliers(const std::vector<double> &x,
   // compute the terms separately then multiply
   // Eq. 131
   // compute angle gradients
-  Eigen::MatrixXd stateAngleGrad =
-      Eigen::MatrixXd::Zero(gateAngles.rows() - 1, nStates);
+  Eigen::MatrixXd stateAngleGrad = Eigen::VectorXd::Zero(gateAngles.rows() - 1);
   for (int state = 0; state < nStates; state++) {
+
+    Eigen::MatrixXd stateGrad =
+        Eigen::MatrixXd::Zero(gateAngles.rows(), nStates);
 
     for (int M = 0; M < gateAngles.rows() - 1; M++) {
 
@@ -424,12 +426,24 @@ MC_VQE::getCRSMultipliers(const std::vector<double> &x,
         angleGrad /= 2.0;
       }
 
-      stateAngleGrad(M, state) = angleGrad;
+      stateAngleGrad(M) = angleGrad;
+    }
 
+    Eigen::MatrixXd tmp = Eigen::VectorXd::Zero(gateAngles.rows());
+    for (int M = 0; M < gateAngles.rows() - 1; M++) {
       for (int I = 0; I < nStates + 1; I++) {
-        std::cout << jacobian(M, I, rotatedEigenstates.col(state)) << "\n";
+        tmp(I) +=
+            stateAngleGrad(M) * jacobian(M, I, rotatedEigenstates.col(state));
       }
     }
+
+    for (int M = 0; M < gateAngles.rows() - 1; M++) {
+      for (int I = 0; I < nStates + 1; I++) {
+        stateGrad(I, M) = tmp(I) * subSpaceRotation(state, M);
+      }
+    }
+
+    gradients.push_back(stateGrad);
   }
 
   exit(0);

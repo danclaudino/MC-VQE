@@ -36,7 +36,6 @@ public:
 
 class MC_VQE : public Algorithm {
 private:
-
   // gets time stamp
   double timer() const;
 
@@ -60,11 +59,12 @@ private:
   std::map<std::string, std::vector<Eigen::MatrixXd>>
   getVQE2PDM(const std::vector<double> &, const std::vector<Eigen::MatrixXd> &);
 
-  std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getCRS1PDM(const std::vector<Eigen::MatrixXd> &);
+  Eigen::MatrixXd getStatePrepationAngleGradient(const Eigen::MatrixXd &,
+                                                 const std::vector<double> &);
 
-  std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getCRS2PDM(const std::vector<Eigen::MatrixXd> &);
+  //Eigen::Vector3d distancePartial(const Eigen::Vector3d &,
+   //                               const Eigen::Vector3d &,
+    //                              const Eigen::Vector3d &);
 
   // implemented entanglers
   const std::vector<std::string> entanglers = {"default", "trotterized", "Ry"};
@@ -153,7 +153,8 @@ protected:
   std::vector<Eigen::MatrixXd> getVQEMultipliers(const std::vector<double> &x);
 
   std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getVQEDensityMatrices(const std::vector<double> &x, std::vector<Eigen::MatrixXd>& multipliers) {
+  getVQEDensityMatrices(const std::vector<double> &x,
+                        std::vector<Eigen::MatrixXd> &multipliers) {
     auto monomerDM = getVQE1PDM(x, multipliers);
     auto dimerDM = getVQE2PDM(x, multipliers);
     monomerDM.insert(dimerDM.begin(), dimerDM.end());
@@ -165,15 +166,14 @@ protected:
                     const std::vector<Eigen::MatrixXd> &);
 
   std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getCRSDensityMatrices(std::vector<Eigen::MatrixXd>& multipliers) {
-    auto monomerDM = getCRS1PDM(multipliers);
-    auto dimerDM = getCRS2PDM(multipliers);
-    monomerDM.insert(dimerDM.begin(), dimerDM.end());
-    return monomerDM;
-  };                    
+  getCRSDensityMatrices(const std::vector<Eigen::MatrixXd> &multipliers);
 
-  std::map<std::string, std::vector<Eigen::VectorXd>>
-  getMonomerGradient(std::map<std::string, std::vector<Eigen::VectorXd>> &);
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
+  getMonomerBasisDensityMatrices(
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &);
+
+  std::map<std::string, std::vector<Eigen::MatrixXd>>
+  getMonomerGradient(std::map<std::string, std::vector<Eigen::MatrixXd>> &);
 
   std::map<std::string, std::vector<Eigen::MatrixXd>>
   getDimerInteractionGradient(

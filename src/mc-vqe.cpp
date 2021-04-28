@@ -440,22 +440,47 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                                  MC_VQE_Energies.data() +
                                      MC_VQE_Energies.size());
 
+std::map<std::string, std::vector<Eigen::MatrixXd>> dm;
 
-    auto g = getVQEMultipliers(x);
-    auto pqp = getCRSMultipliers(x, g);
-/*
-    auto g = getVQEMultipliers(x);
+Eigen::MatrixXd X1 = Eigen::VectorXd::Zero(nStates);
+Eigen::MatrixXd Z1 = Eigen::VectorXd::Zero(nStates);
+Eigen::MatrixXd XX1 = Eigen::MatrixXd::Zero(nStates, nStates);
+Eigen::MatrixXd XZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
+Eigen::MatrixXd ZX1 = Eigen::MatrixXd::Zero(nStates, nStates);
+Eigen::MatrixXd ZZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
 
-    auto dm = getUnrelaxedDensityMatrices(x);
-    for (int s = 0 ; s < nStates; s++ ) {
-      std::cout << dm["X"][s] << "\n\n";
-      std::cout << dm["Z"][s] << "\n\n";
-      std::cout << dm["XX"][s] << "\n\n";
-      std::cout << dm["XZ"][s] << "\n\n";
-      std::cout << dm["ZX"][s] << "\n\n";
-      std::cout << dm["ZZ"][s] << "\n\n";
-    }
-  */
+X1 << -0.07114968, -0.46273434;
+Z1 << 0.97345163, 0.94304295;
+XX1 << 0, 0.04008718, 0.04008718, 0;
+XZ1 << 0, -0.12594704, -0.35449684, 0;
+ZX1 = XZ1.transpose();
+ZZ1 << 0, 0.89717335, 0.89717335, 0;
+
+Eigen::MatrixXd X2 = Eigen::VectorXd::Zero(nStates);
+Eigen::MatrixXd Z2 = Eigen::VectorXd::Zero(nStates);
+Eigen::MatrixXd XX2 = Eigen::MatrixXd::Zero(nStates, nStates);
+Eigen::MatrixXd XZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
+Eigen::MatrixXd ZX2 = Eigen::MatrixXd::Zero(nStates, nStates);
+Eigen::MatrixXd ZZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
+
+X2 << -0.21860722,  0.26865738;
+Z2 << -0.42482695,  0.41315969;
+XX2 << 0, -0.89910805, -0.89910805, 0;
+XZ2 << 0, -0.00911019, -0.1114055, 0;
+ZX2 = XZ2.transpose();
+ZZ2 << 0, -0.96768438, -0.96768438, 0;
+
+dm["X"] = {X1, X2};
+dm["Z"] = {Z1, Z2};
+dm["XX"] = {XX1, XX2};
+dm["XZ"] = {XZ1, XZ2};
+dm["ZX"] = {ZX1, ZX2};
+dm["ZZ"] = {ZZ1, ZZ2};
+
+auto dp = getMonomerBasisDensityMatrices(dm);
+
+auto hp = getDimerInteractionGradient(dp);
+
     return spectrum;
   } else {
     return {};

@@ -20,15 +20,25 @@ void MC_VQE::computeCIS() {
   CISHamiltonian = Eigen::MatrixXd::Zero(nChromophores + 1, nChromophores + 1);
 
   // diagonal singles-singles
+  double sumZ = 0.0, sumZZ = 0.0;
   for (int A = 0; A < nChromophores; A++) {
     CISHamiltonian(A + 1, A + 1) = -2.0 * monomers[A].getD();
-    double z = 0.0;
+
+    sumZ += monomers[A].getD();
     for (int B : pairs[A]) {
+     sumZ += monomers[A].getZ(monomers[B]);
+
+    sumZZ +=  monomers[A].getZZ(monomers[B]) +
+                                             
+                                             monomers[B].getZZ(monomers[A]);
       CISHamiltonian(A + 1, A + 1) -= 2.0 * (monomers[A].getZ(monomers[B]) +
                                              monomers[A].getZZ(monomers[B]) +
                                              monomers[B].getZZ(monomers[A]));
     }
   }
+  auto E_ref = sumZ + 0.5 * sumZZ;
+
+  CISHamiltonian += E_ref * Eigen::MatrixXd::Identity(nChromophores + 1, nChromophores + 1);
 
   // reference-singles off diagonal
   for (int A = 0; A < nChromophores; A++) {

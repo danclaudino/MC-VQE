@@ -547,7 +547,7 @@ std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getCRSDensityMatrices(
     const std::vector<Eigen::MatrixXd> &cpCRSMultipliers) {
 
-  std::map<std::string, std::vector<Eigen::MatrixXd>> CRSPDM;
+  std::map<std::string, std::vector<Eigen::MatrixXd>> crsPDM;
   for (int mcState = 0; mcState < nStates; mcState++) {
     // Compute D Eq. 138
 
@@ -565,9 +565,9 @@ MC_VQE::getCRSDensityMatrices(
 
     std::vector<Eigen::MatrixXd> termPDM;
     for (auto termStr : {"X", "Z", "XX", "XZ", "ZZ"}) {
-      CRSPDM.emplace(termStr, termPDM);
+      crsPDM.emplace(termStr, termPDM);
       if (termStr == "XZ") {
-        CRSPDM.emplace("ZX", termPDM);
+        crsPDM.emplace("ZX", termPDM);
       }
 
       Eigen::MatrixXd stateDensityMatrix;
@@ -645,14 +645,36 @@ MC_VQE::getCRSDensityMatrices(
         }
       }
 
-      CRSPDM[termStr].push_back(stateDensityMatrix);
+      crsPDM[termStr].push_back(stateDensityMatrix);
       if (termStr == "XZ") {
-        CRSPDM["ZX"].push_back(stateDensityMatrix.transpose());
+        crsPDM["ZX"].push_back(stateDensityMatrix.transpose());
       }
     }
   }
 
-  return CRSPDM;
+  return crsPDM;
+}
+
+std::map<std::string, std::vector<Eigen::MatrixXd>>
+MC_VQE::getRelaxedDensityMatrices(
+    std::map<std::string, std::vector<Eigen::MatrixXd>> &unrelaxedDM,
+    std::map<std::string, std::vector<Eigen::MatrixXd>> &vqeDM,
+    std::map<std::string, std::vector<Eigen::MatrixXd>> &crsDM) {
+
+  std::map<std::string, std::vector<Eigen::MatrixXd>> relaxedDM;
+
+  for (auto termStr : {"X", "Z", "XX", "XZ", "ZX", "ZZ"}) {
+
+    std::vector<Eigen::MatrixXd> DMs(nStates);
+    relaxedDM.emplace(termStr, DMs);
+    for (int state = 0; state < nStates; state++) {
+
+      relaxedDM[termStr][state] = unrelaxedDM[termStr][state] +
+                                  vqeDM[termStr][state] + crsDM[termStr][state];
+    }
+  }
+
+  return relaxedDM;
 }
 
 std::map<std::string, std::vector<Eigen::MatrixXd>>
@@ -729,31 +751,12 @@ MC_VQE::getMonomerBasisDensityMatrices(
   return monomerBasisDM;
 }
 
-/*
-Eigen::Vector3d MC_VQE::distancePartial(const Eigen::Vector3d &muA,
-                             const Eigen::Vector3d &muB,
-                             const Eigen::Vector3d &r) {
-    auto d = r.norm();
-    Eigen::Vector3d ret = Eigen::Vector3d::Zero();
-    ret -= 3.0 * muA.dot(muB) / std::pow(d, 5) * r;
-    std::cout << ret << "\n";
-    ret += 15.0 * muA.dot(r) * muB.dot(r) / std::pow(d, 7) * r;
-    std::cout << ret << "\n";
-    ret -= 3.0 * muB.dot(r) / std::pow(d, 5) * muA;
-    std::cout << ret << "\n";
-    ret -= 3.0 * muA.dot(r) / std::pow(d, 5) * muB;
-std::cout << ret << "\n";
-    return ret;
-  }
-  */
-
 std::map<std::string, std::vector<Eigen::MatrixXd>> MC_VQE::getMonomerGradient(
     std::map<std::string, std::vector<Eigen::MatrixXd>> &_1PDM) {
 
   std::map<std::string, std::vector<Eigen::MatrixXd>> monomerGradients;
 
   // Eq. 143
-
   for (auto termStr : {"H", "P"}) {
 
     std::vector<Eigen::MatrixXd> termGrad;
@@ -772,7 +775,6 @@ std::map<std::string, std::vector<Eigen::MatrixXd>> MC_VQE::getMonomerGradient(
 
       termGrad.push_back(grad);
     }
-
     monomerGradients.emplace(termStr, termGrad);
   }
 
@@ -782,15 +784,16 @@ std::map<std::string, std::vector<Eigen::MatrixXd>> MC_VQE::getMonomerGradient(
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getDimerInteractionGradient(
     std::map<std::string, std::vector<Eigen::MatrixXd>> &_2PDM) {
-  /*
-    // Eq. 147
-    auto dipolePartial = [&](const Eigen::Vector3d mu, const Eigen::Vector3d r)
-    { double d = r.norm(); Eigen::Vector3d ret = Eigen::Vector3d::Zero(); ret =
-    mu / std::pow(d, 3.0) - 3.0 * mu.dot(r) * r / std::pow(d, 5.0); return ret;
-    };
-  */
-  // Eq. 148
 
+  // Eq. 147
+  auto dipolePartial = [&](const Eigen::Vector3d mu, const Eigen::Vector3d r) {
+    double d = r.norm();
+    Eigen::Vector3d ret = Eigen::Vector3d::Zero();
+    ret = mu / std::pow(d, 3.0) - 3.0 * mu.dot(r) * r / std::pow(d, 5.0);
+    return ret;
+  };
+
+  // Eq. 148
   auto distancePartial = [&](const Eigen::Vector3d muA,
                              const Eigen::Vector3d muB,
                              const Eigen::Vector3d r) {
@@ -805,7 +808,7 @@ MC_VQE::getDimerInteractionGradient(
 
   std::map<std::string, std::vector<Eigen::MatrixXd>> dimerInteractionGradients;
 
-  for (auto termStr : {"R", "H", "P", "T", "R"}) {
+  for (auto termStr : {"P", "H", "T", "P", "R"}) {
 
     std::vector<Eigen::MatrixXd> termEta;
     for (int state = 0; state < nStates; state++) {
@@ -819,55 +822,57 @@ MC_VQE::getDimerInteractionGradient(
               monomers[B].getCenterOfMass() - monomers[A].getCenterOfMass();
 
           // Eq. 145
-          /*
-         if (termStr == "H") {
+          if (termStr == "H") {
+            eta.row(A) +=
+                dipolePartial(monomers[B].getGroundStateDipole(), r) *
+                    _2PDM["HH"][state](A, B) +
+                dipolePartial(monomers[B].getTransitionDipole(), r) *
+                    _2PDM["HT"][state](A, B) +
+                dipolePartial(monomers[B].getExcitedStateDipole(), r) *
+                    _2PDM["HP"][state](A, B);
+            eta.row(B) +=
+                dipolePartial(monomers[A].getGroundStateDipole(), r) *
+                    _2PDM["HH"][state](A, B) +
+                dipolePartial(monomers[A].getTransitionDipole(), r) *
+                    _2PDM["TH"][state](A, B) +
+                dipolePartial(monomers[A].getExcitedStateDipole(), r) *
+                    _2PDM["PH"][state](A, B);
+          }
 
-           eta.row(A) += dipolePartial(monomers[B].getGroundStateDipole(), r)
-         / 4.0 * _2PDM["ZZ"][state](A, B); eta.row(A) -=
-         dipolePartial(monomers[B].getExcitedStateDipole(), r) / 4.0 *
-                         _2PDM["ZZ"][state](A, B);
-           eta.row(A) += dipolePartial(monomers[B].getTransitionDipole(), r)
-         / 2.0 * _2PDM["ZX"][state](A, B); eta.row(B) +=
-         dipolePartial(monomers[A].getGroundStateDipole(), r) / 4.0 *
-                         _2PDM["ZZ"][state](A, B);
-           eta.row(B) -= dipolePartial(monomers[A].getExcitedStateDipole(), r)
-         / 4.0 * _2PDM["ZZ"][state](A, B); eta.row(B) +=
-         dipolePartial(monomers[A].getTransitionDipole(), r) / 2.0 *
-                         _2PDM["XZ"][state](A, B);
-         }
+          if (termStr == "T") {
+            eta.row(A) +=
+                dipolePartial(monomers[B].getGroundStateDipole(), r) *
+                    _2PDM["TH"][state](A, B) +
+                dipolePartial(monomers[B].getTransitionDipole(), r) *
+                    _2PDM["TT"][state](A, B) +
+                dipolePartial(monomers[B].getExcitedStateDipole(), r) *
+                    _2PDM["TP"][state](A, B);
+            eta.row(B) +=
+                dipolePartial(monomers[A].getGroundStateDipole(), r) *
+                    _2PDM["HT"][state](A, B) +
+                dipolePartial(monomers[A].getTransitionDipole(), r) *
+                    _2PDM["TT"][state](A, B) +
+                dipolePartial(monomers[A].getExcitedStateDipole(), r) *
+                    _2PDM["PT"][state](A, B);
+          }
 
-         // Eq. 145
-         if (termStr == "P") {
-           eta.row(A) -= dipolePartial(monomers[B].getGroundStateDipole(), r)
-         / 4.0 * _2PDM["ZZ"][state](A, B); eta.row(A) +=
-         dipolePartial(monomers[B].getExcitedStateDipole(), r) / 4.0 *
-                         _2PDM["ZZ"][state](A, B);
-           eta.row(A) -= dipolePartial(monomers[B].getTransitionDipole(), r)
-         / 2.0 * _2PDM["ZX"][state](A, B); eta.row(B) -=
-         dipolePartial(monomers[A].getGroundStateDipole(), r) / 4.0 *
-                         _2PDM["ZZ"][state](A, B);
-           eta.row(B) += dipolePartial(monomers[A].getExcitedStateDipole(), r)
-         / 4.0 * _2PDM["ZZ"][state](A, B); eta.row(B) -=
-         dipolePartial(monomers[A].getTransitionDipole(), r) / 2.0 *
-                         _2PDM["XZ"][state](A, B);
-         }
+          if (termStr == "P") {
+            eta.row(A) +=
+                dipolePartial(monomers[B].getGroundStateDipole(), r) *
+                    _2PDM["PH"][state](A, B) +
+                dipolePartial(monomers[B].getTransitionDipole(), r) *
+                    _2PDM["PT"][state](A, B) +
+                dipolePartial(monomers[B].getExcitedStateDipole(), r) *
+                    _2PDM["PP"][state](A, B);
+            eta.row(B) +=
+                dipolePartial(monomers[A].getGroundStateDipole(), r) *
+                    _2PDM["HP"][state](A, B) +
+                dipolePartial(monomers[A].getTransitionDipole(), r) *
+                    _2PDM["TP"][state](A, B) +
+                dipolePartial(monomers[A].getExcitedStateDipole(), r) *
+                    _2PDM["PP"][state](A, B);
+          }
 
-         // Eq. 145
-         if (termStr == "T") {
-           eta.row(A) += dipolePartial(monomers[B].getTransitionDipole(), r) *
-                         _2PDM["XX"][state](A, B);
-           eta.row(A) += dipolePartial(monomers[B].getGroundStateDipole(), r)
-         / 2.0 * _2PDM["XZ"][state](A, B); eta.row(A) -=
-         dipolePartial(monomers[B].getExcitedStateDipole(), r) / 2.0 *
-                         _2PDM["XZ"][state](A, B);
-           eta.row(B) += dipolePartial(monomers[A].getTransitionDipole(), r) *
-                         _2PDM["XX"][state](A, B);
-           eta.row(B) += dipolePartial(monomers[A].getGroundStateDipole(), r)
-         / 2.0 * _2PDM["ZX"][state](A, B); eta.row(B) -=
-         dipolePartial(monomers[A].getExcitedStateDipole(), r) / 2.0 *
-                         _2PDM["ZX"][state](A, B);
-         }
-         */
           // Eq. 146
           if (termStr == "R") {
 
@@ -924,12 +929,10 @@ MC_VQE::getDimerInteractionGradient(
                                       monomers[B].getExcitedStateDipole(), r);
             eta.row(A) -= PP * _2PDM["PP"][state](A, B);
             eta.row(B) += PP * _2PDM["PP"][state](A, B);
-            std::cout << PP * _2PDM["PP"][state](A, B) << "\n";
-            exit(0);
           }
         }
       }
-      termEta.push_back(eta);
+      termEta.push_back(eta / 2.0);
     }
     dimerInteractionGradients.emplace(termStr, termEta);
   }

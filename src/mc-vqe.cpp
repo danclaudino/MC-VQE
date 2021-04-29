@@ -481,6 +481,8 @@ auto dp = getMonomerBasisDensityMatrices(dm);
 
 auto hp = getDimerInteractionGradient(dp);
 
+dp.insert(hp.begin(), hp.end())
+
     return spectrum;
   } else {
     return {};

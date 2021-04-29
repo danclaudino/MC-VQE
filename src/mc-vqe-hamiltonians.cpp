@@ -26,11 +26,11 @@ void MC_VQE::computeCIS() {
 
     sumZ += monomers[A].getD();
     for (int B : pairs[A]) {
-     sumZ += monomers[A].getZ(monomers[B]);
+      sumZ += monomers[A].getZ(monomers[B]);
 
-    sumZZ +=  monomers[A].getZZ(monomers[B]) +
-                                             
-                                             monomers[B].getZZ(monomers[A]);
+      sumZZ += monomers[A].getZZ(monomers[B]) +
+
+               monomers[B].getZZ(monomers[A]);
       CISHamiltonian(A + 1, A + 1) -= 2.0 * (monomers[A].getZ(monomers[B]) +
                                              monomers[A].getZZ(monomers[B]) +
                                              monomers[B].getZZ(monomers[A]));
@@ -38,7 +38,8 @@ void MC_VQE::computeCIS() {
   }
   auto E_ref = sumZ + 0.5 * sumZZ;
 
-  CISHamiltonian += E_ref * Eigen::MatrixXd::Identity(nChromophores + 1, nChromophores + 1);
+  CISHamiltonian +=
+      E_ref * Eigen::MatrixXd::Identity(nChromophores + 1, nChromophores + 1);
 
   // reference-singles off diagonal
   for (int A = 0; A < nChromophores; A++) {
@@ -60,7 +61,8 @@ void MC_VQE::computeCIS() {
   // Diagonalizing the CISHamiltonian
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(CISHamiltonian);
   CISEnergies = EigenSolver.eigenvalues()(Eigen::seq(0, nStates - 1));
-  CISEigenstates = EigenSolver.eigenvectors()(Eigen::all, Eigen::seq(0, nStates - 1));
+  CISEigenstates =
+      EigenSolver.eigenvectors()(Eigen::all, Eigen::seq(0, nStates - 1));
 
   logControl("Computed CIS parameters [" + std::to_string(timer()) + " s]", 1);
 
@@ -164,7 +166,6 @@ void MC_VQE::computeSubspaceHamiltonian(Eigen::MatrixXd &entangledHamiltonian,
 
 Eigen::MatrixXd
 MC_VQE::statePreparationAngles(const Eigen::MatrixXd &coefficientMatrix) const {
-
 
   auto nCols = coefficientMatrix.cols();
   Eigen::MatrixXd gateAngles =

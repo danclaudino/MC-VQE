@@ -61,11 +61,6 @@ private:
 
   Eigen::MatrixXd getStatePrepationAngleGradient(const Eigen::MatrixXd &,
                                                  const std::vector<double> &);
-
-  //Eigen::Vector3d distancePartial(const Eigen::Vector3d &,
-   //                               const Eigen::Vector3d &,
-    //                              const Eigen::Vector3d &);
-
   // implemented entanglers
   const std::vector<std::string> entanglers = {"default", "trotterized", "Ry"};
 
@@ -168,6 +163,11 @@ protected:
   std::map<std::string, std::vector<Eigen::MatrixXd>>
   getCRSDensityMatrices(const std::vector<Eigen::MatrixXd> &multipliers);
 
+  std::map<std::string, std::vector<Eigen::MatrixXd>> getRelaxedDensityMatrices(
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &,
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &,
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &);
+
   std::map<std::string, std::vector<Eigen::MatrixXd>>
   getMonomerBasisDensityMatrices(
       std::map<std::string, std::vector<Eigen::MatrixXd>> &);
@@ -178,6 +178,9 @@ protected:
   std::map<std::string, std::vector<Eigen::MatrixXd>>
   getDimerInteractionGradient(
       std::map<std::string, std::vector<Eigen::MatrixXd>> &);
+
+  std::vector<Eigen::MatrixXd>
+  getNuclearGradients(std::map<std::string, std::vector<Eigen::MatrixXd>> &);
 
 public:
   bool initialize(const HeterogeneousMap &parameters) override;

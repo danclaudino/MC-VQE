@@ -33,8 +33,8 @@ public:
     auto mcvqe = std::make_shared<xacc::algorithm::MC_VQE>();
     context.RegisterService<xacc::Algorithm>(mcvqe);
 
-    auto test = std::make_shared<xacc::algorithm::ImportFromTestFile>();
-    context.RegisterService<xacc::algorithm::Importable>(test);
+    auto test = std::make_shared<xacc::ImportFromTestFile>();
+    context.RegisterService<xacc::Importable>(test);
 
   }
 

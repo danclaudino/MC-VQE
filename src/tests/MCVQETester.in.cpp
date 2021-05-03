@@ -16,7 +16,6 @@
 #include "Algorithm.hpp"
 #include "Optimizer.hpp"
 #include "xacc.hpp"
-//#include "xacc_service.hpp"
 
 using namespace xacc;
 

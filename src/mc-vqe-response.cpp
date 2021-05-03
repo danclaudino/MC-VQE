@@ -757,7 +757,7 @@ std::map<std::string, std::vector<Eigen::MatrixXd>> MC_VQE::getMonomerGradient(
   std::map<std::string, std::vector<Eigen::MatrixXd>> monomerGradients;
 
   // Eq. 143
-  for (auto termStr : {"H", "P"}) {
+  for (auto termStr : {"EH", "EP", "ET"}) {
 
     std::vector<Eigen::MatrixXd> termGrad;
 
@@ -765,11 +765,11 @@ std::map<std::string, std::vector<Eigen::MatrixXd>> MC_VQE::getMonomerGradient(
 
       Eigen::MatrixXd grad = Eigen::VectorXd::Constant(nChromophores, 0.5);
 
-      if (termStr == "H") {
+      if (termStr == "EH") {
         grad += 0.5 * _1PDM["Z"][state];
       }
 
-      if (termStr == "P") {
+      if (termStr == "EP") {
         grad -= 0.5 * _1PDM["Z"][state];
       }
 
@@ -808,7 +808,7 @@ MC_VQE::getDimerInteractionGradient(
 
   std::map<std::string, std::vector<Eigen::MatrixXd>> dimerInteractionGradients;
 
-  for (auto termStr : {"P", "H", "T", "P", "R"}) {
+  for (auto termStr : {"MH", "MT", "MP", "R"}) {
 
     std::vector<Eigen::MatrixXd> termEta;
     for (int state = 0; state < nStates; state++) {
@@ -822,7 +822,7 @@ MC_VQE::getDimerInteractionGradient(
               monomers[B].getCenterOfMass() - monomers[A].getCenterOfMass();
 
           // Eq. 145
-          if (termStr == "H") {
+          if (termStr == "MH") {
             eta.row(A) +=
                 dipolePartial(monomers[B].getGroundStateDipole(), r) *
                     _2PDM["HH"][state](A, B) +
@@ -839,7 +839,7 @@ MC_VQE::getDimerInteractionGradient(
                     _2PDM["PH"][state](A, B);
           }
 
-          if (termStr == "T") {
+          if (termStr == "MT") {
             eta.row(A) +=
                 dipolePartial(monomers[B].getGroundStateDipole(), r) *
                     _2PDM["TH"][state](A, B) +
@@ -856,7 +856,7 @@ MC_VQE::getDimerInteractionGradient(
                     _2PDM["PT"][state](A, B);
           }
 
-          if (termStr == "P") {
+          if (termStr == "MP") {
             eta.row(A) +=
                 dipolePartial(monomers[B].getGroundStateDipole(), r) *
                     _2PDM["PH"][state](A, B) +
@@ -939,6 +939,32 @@ MC_VQE::getDimerInteractionGradient(
 
   return dimerInteractionGradients;
 }
+
+/*
+// here we contract the MC-VQE density matrices with the classical derivatives
+std::vector<Eigen::MatrixXd>
+  getNuclearGradients(std::map<std::string, std::vector<Eigen::MatrixXd>> &DM) {
+
+    std::vector<std::vector<Eigen::MatrixXd>> gradients;
+    int nAtoms = 44;
+
+  // loop over states
+  for (int state = 0; state < nStates; state++) {
+
+    std::vector<Eigen::MatrixXd> stateGradients;
+    // loop over chromophores
+    for (int A = 0; A < nChromophores; A++) {
+
+      Eigen::MatrixXd gradient = Eigen::MatrixXd::Zero(nAtoms, 3);
+
+      gradient += DM['EH'][state](A) * monomer[A].getClassicalGradient('EH'); 
+      gradient += DM['EP'][state](A) * monomer[A].getClassicalGradient('EP'); 
+
+
+  }
+
+}
+*/
 
 } // namespace algorithm
 } // namespace xacc

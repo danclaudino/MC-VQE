@@ -13,16 +13,12 @@
 set(LIBRARY_NAME mc-vqe)
 
 file(GLOB HEADERS *.hpp)
-file(GLOB SRC *.cpp)
+file(GLOB SRC *.cpp importable/*.cpp)
 
 usfunctiongetresourcesource(TARGET ${LIBRARY_NAME} OUT SRC)
 usfunctiongeneratebundleinit(TARGET ${LIBRARY_NAME} OUT SRC)
 
 add_library(${LIBRARY_NAME} SHARED ${SRC})
-
-#target_include_directories(${LIBRARY_NAME} PUBLIC .)
-
-#target_link_libraries(${LIBRARY_NAME} PUBLIC xacc CppMicroServices PRIVATE xacc-quantum-gate)
 
 set(_bundle_name mc_vqe)
 set_target_properties(${LIBRARY_NAME}
@@ -38,9 +34,9 @@ usfunctionembedresources(TARGET
                          FILES
                          manifest.json)
 
-target_include_directories(${LIBRARY_NAME} PUBLIC . ${XACC_DIR}/include/eigen ${XACC_DIR})
+target_include_directories(${LIBRARY_NAME} PUBLIC . ${XACC_DIR}/include/eigen)
 
-target_link_libraries(${LIBRARY_NAME} PUBLIC xacc::xacc xacc::quantum_gate xacc::fermion xacc::pauli)
+target_link_libraries(${LIBRARY_NAME} PUBLIC xacc::xacc xacc::quantum_gate xacc::pauli)
 
 xacc_configure_plugin_rpath(mc-vqe)
 add_subdirectory(tests)

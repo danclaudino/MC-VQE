@@ -13,4 +13,4 @@
 include_directories(${CMAKE_BINARY_DIR})
 add_xacc_test(MCVQE)
 configure_file(MCVQETester.in.cpp ${CMAKE_BINARY_DIR}/src/tests/MCVQETester.cpp)
-target_link_libraries(MCVQETester xacc::xacc)# xacc::xacc-pauli xacc::xacc-quantum-gate) 
+target_link_libraries(MCVQETester xacc::xacc)

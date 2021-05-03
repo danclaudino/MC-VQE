@@ -49,7 +49,7 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
     return false;
   }
 
-  if (!parameters.stringExists("data-path")) {
+  if (!parameters.stringExists("energy-file-path")) {
     xacc::error("Missing data file");
     return false;
   }
@@ -101,16 +101,18 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
 
   // here we get an instance of the Importable class and import the data
   // if this is not provided, it defaults to the test implementation
-  std::shared_ptr<xacc::algorithm::Importable> import;
+  std::shared_ptr<xacc::Importable> import;
   if (parameters.stringExists("import")) {
-    import = xacc::getService<xacc::algorithm::Importable>(
+    import = xacc::getService<xacc::Importable>(
         parameters.getString("import"));
   } else {
     import =
-        xacc::getService<xacc::algorithm::Importable>("import-from-test-file");
+        xacc::getService<xacc::Importable>("import-from-test-file");
   }
 
-  import->import(nChromophores, dataPath);
+
+  //Importable nano;
+  import->import(nChromophores);
   monomers = import->getMonomers();
 
   // Convert Debye to a.u.
@@ -481,7 +483,7 @@ auto dp = getMonomerBasisDensityMatrices(dm);
 
 auto hp = getDimerInteractionGradient(dp);
 
-dp.insert(hp.begin(), hp.end())
+dp.insert(hp.begin(), hp.end());
 
     return spectrum;
   } else {

@@ -15,7 +15,6 @@
 
 #include "Algorithm.hpp"
 #include "AlgorithmGradientStrategy.hpp"
-#include "Monomer.hpp"
 #include "xacc.hpp"
 #include "xacc_service.hpp"
 #include <Eigen/Dense>
@@ -25,14 +24,61 @@
 #include <string>
 #include <vector>
 
+// Helper classes
+class Monomer {
+private:
+  const double ANGSTROM2BOHR = 1.8897161646320724, DEBYE2AU = 0.393430307;
+  double _groundStateEnergy, _excitedStateEnergy;
+  Eigen::Vector3d _groundStateDipole, _excitedStateDipole, _transitionDipole,
+      _centerOfMass;
+
+double twoBodyH(const Eigen::VectorXd &mu_A, const Eigen::VectorXd &mu_B,
+                         const Eigen::VectorXd &r_AB);
+
+public:
+  Monomer() = default;
+  Monomer(const double groundStateEnergy,
+                 const double excitedStateEnergy,
+                 const Eigen::Vector3d groundStateDipole,
+                 const Eigen::Vector3d excitedStateDipole,
+                 const Eigen::Vector3d transitionDipole,
+                 const Eigen::Vector3d centerOfMass);
+
+  void isDipoleInDebye(const bool); 
+  void isCenterOfMassInAngstrom(const bool );
+  double getS();
+  double getD();
+  double getE();
+
+  Eigen::Vector3d getDipoleSum();
+  Eigen::Vector3d getDipoleDifference();
+  Eigen::Vector3d getGroundStateDipole();
+  Eigen::Vector3d getExcitedStateDipole();
+  Eigen::Vector3d getTransitionDipole();
+  Eigen::Vector3d getCenterOfMass();
+
+  double getX(Monomer &);
+  double getZ(Monomer &);
+  double getXX(Monomer &);
+  double getXZ(Monomer &);
+  double getZX(Monomer &);
+  double getZZ(Monomer &);
+};
+
+
 namespace xacc {
-namespace algorithm {
 
 class Importable : public Identifiable {
+
 public:
-  virtual void import(const int nChromophores, const std::string dataDir) = 0;
+  Importable() = default;
+  virtual void setPathForEnergyData(const std::string) = 0;
+  virtual void setPathForResponseData(const std::string, const std::string);
+  virtual void import(const int nChromophores) = 0;
   virtual std::vector<Monomer> getMonomers() = 0;
 };
+
+namespace algorithm {
 
 class MC_VQE : public Algorithm {
 private:

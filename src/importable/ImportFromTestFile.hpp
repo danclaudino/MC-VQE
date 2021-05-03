@@ -13,38 +13,77 @@
 #ifndef XACC_IMPORT_FROM_TEST_FILE_HPP_
 #define XACC_IMPORT_FROM_TEST_FILE_HPP_
 
+//#include "Importable.hpp"
 #include "mc-vqe.hpp"
 #include "xacc.hpp"
 #include "xacc_plugin.hpp"
 #include <vector>
 
-namespace xacc {
-namespace algorithm {
+ namespace xacc {
+// namespace algorithm {
 
 // This imports the data in the files
 // top_dir/examples/2_qubit_datafile.txt
 // top_dir/examples/18_qubit_datafile.txt
 // top_dir/examples/60_qubit_datafile.txt
 class ImportFromTestFile : public Importable {
-private:
-  std::vector<Monomer> monomers;
 
-public:
-  void import(const int nChromophores, const std::string dataDir) override {
-    std::string dataPath;
-    if (nChromophores == 2) {
-      dataPath = dataDir + "2_qubit_datafile.txt";
-    } else if (nChromophores <= 18) {
-      dataPath = dataDir + "18_qubit_datafile.txt";
-    } else {
-      dataPath = dataDir + "60_qubit_datafile.txt";
-    }
-
-    std::ifstream file(dataPath);
-    if (file.bad()) {
+/*
+  ImportFromTestFile(const std::string energyFilePath) {
+    energyFile(energyFilePath);
+    if (file.fail()) {
       xacc::error("Cannot access data file.");
       return;
     }
+  }
+
+  ImportFromTestFile(const std::string energyFilePath,
+                     const std::string responseFilePath) {
+    energyFile(energyFilePath);
+    if (file.fail()) {
+      xacc::error("Cannot access data file.");
+      return;
+    }
+    responseFile(responseFilePath);
+    if (file.fail()) {
+      xacc::error("Cannot access data file.");
+      return;
+    }
+  }
+*/
+private:
+  std::ifstream energyFile, responseFile;
+  std::vector<Monomer> monomers;
+
+public:
+
+  void setPathForEnergyData(const std::string energyFilePath) override {
+
+    energyFile.open(energyFilePath);
+    if (energyFile.fail()) {
+      xacc::error("Cannot access data file.");
+      return;
+    }
+    return;
+  }
+
+  void setPathForResponseData(const std::string energyFilePath, const std::string responseFilePath) override {
+
+    energyFile.open(energyFilePath);
+    if (energyFile.fail()) {
+      xacc::error("Cannot access data file.");
+      return;
+    }
+    responseFile.open(responseFilePath);
+    if (responseFile.fail()) {
+      xacc::error("Cannot access data file.");
+      return;
+    }
+
+    return;
+  }
+
+  void import(const int nChromophores) override {
 
     std::string line, tmp, comp;
     Eigen::Vector3d tmpVec;
@@ -53,13 +92,15 @@ public:
     for (int A = 0; A < nChromophores; A++) {
 
       // this is just the number label of the chromophore
-      std::getline(file, line);
-      std::getline(file, line);
+      std::getline(energyFile, line);
+      std::getline(energyFile, line);
+      auto nAtoms = std::stoi(line.substr(line.find(":") + 1));
+      std::getline(energyFile, line);
       auto groundStateEnergy = std::stod(line.substr(line.find(":") + 1));
-      std::getline(file, line);
+      std::getline(energyFile, line);
       auto excitedStateEnergy = std::stod(line.substr(line.find(":") + 1));
 
-      std::getline(file, line);
+      std::getline(energyFile, line);
       tmp = line.substr(line.find(":") + 1);
       std::stringstream centerOfMassStream(tmp);
       Eigen::Vector3d centerOfMass = Eigen::Vector3d::Zero();
@@ -68,7 +109,7 @@ public:
         centerOfMass(xyz++) = std::stod(comp); // * ANGSTROM2BOHR;
       }
 
-      std::getline(file, line);
+      std::getline(energyFile, line);
       tmp = line.substr(line.find(":") + 1);
       Eigen::Vector3d groundStateDipole = Eigen::Vector3d::Zero();
       std::stringstream gsDipoleStream(tmp);
@@ -77,7 +118,7 @@ public:
         groundStateDipole(xyz++) = std::stod(comp); // * DEBYE2AU;
       }
 
-      std::getline(file, line);
+      std::getline(energyFile, line);
       tmp = line.substr(line.find(":") + 1);
       std::stringstream esDipoleStream(tmp);
       Eigen::Vector3d excitedStateDipole = Eigen::Vector3d::Zero();
@@ -86,7 +127,7 @@ public:
         excitedStateDipole(xyz++) = std::stod(comp); // * DEBYE2AU;
       }
 
-      std::getline(file, line);
+      std::getline(energyFile, line);
       tmp = line.substr(line.find(":") + 1);
       std::stringstream tDipoleStream(tmp);
       xyz = 0;
@@ -99,7 +140,7 @@ public:
                 excitedStateDipole, transitionDipole, centerOfMass);
       monomers.push_back(m);
     }
-    file.close();
+    energyFile.close();
     return;
   }
 
@@ -108,6 +149,6 @@ public:
   const std::string description() const override { return ""; }
 };
 
-} // namespace algorithm
+//} // namespace algorithm
 } // namespace xacc
 #endif

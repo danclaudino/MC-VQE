@@ -1,3 +1,4 @@
+#include "Monomer.hpp"
 #include "PauliOperator.hpp"
 #include "mc-vqe.hpp"
 #include "xacc.hpp"
@@ -940,13 +941,13 @@ MC_VQE::getDimerInteractionGradient(
   return dimerInteractionGradients;
 }
 
-/*
 // here we contract the MC-VQE density matrices with the classical derivatives
-std::vector<Eigen::MatrixXd>
-  getNuclearGradients(std::map<std::string, std::vector<Eigen::MatrixXd>> &DM) {
+// vector<stateGradient>
+// stateGradients = vector<monomerGradient>
+std::vector<std::vector<Eigen::MatrixXd>> MC_VQE::getNuclearGradients(
+    std::map<std::string, std::vector<Eigen::MatrixXd>> &DM) {
 
-    std::vector<std::vector<Eigen::MatrixXd>> gradients;
-    int nAtoms = 44;
+  std::vector<std::vector<Eigen::MatrixXd>> gradients;
 
   // loop over states
   for (int state = 0; state < nStates; state++) {
@@ -955,16 +956,36 @@ std::vector<Eigen::MatrixXd>
     // loop over chromophores
     for (int A = 0; A < nChromophores; A++) {
 
-      Eigen::MatrixXd gradient = Eigen::MatrixXd::Zero(nAtoms, 3);
+      auto nAtoms = monomers[A].getNumberOfAtoms();
+      Eigen::MatrixXd monomerGradient = Eigen::MatrixXd::Zero(nAtoms, 3);
 
-      gradient += DM['EH'][state](A) * monomer[A].getClassicalGradient('EH'); 
-      gradient += DM['EP'][state](A) * monomer[A].getClassicalGradient('EP'); 
+      monomerGradient +=
+          DM["EH"][state](A) * monomers[A].getGroundStateEnergyGradient();
+      monomerGradient +=
+          DM["EP"][state](A) * monomers[A].getExcitedStateEnergyGradient();
 
+      auto groundStateDipoleGradient =
+          monomers[A].getGroundStateDipoleGradient();
+      auto excitedStateDipoleGradient =
+          monomers[A].getExcitedStateDipoleGradient();
+      auto transitionDipoleGradient = monomers[A].getTransitionDipoleGradient();
+      auto centerOfMassGradient = monomers[A].getCenterOfMassGradient();
 
+      for (int i = 0; i < 3; i++) {
+        monomerGradient += DM["MH"][state](A, i) * groundStateDipoleGradient[i];
+        monomerGradient +=
+            DM["MP"][state](A, i) * excitedStateDipoleGradient[i];
+        monomerGradient += DM["MT"][state](A, i) * transitionDipoleGradient[i];
+        monomerGradient += DM["R"][state](A, i) * centerOfMassGradient[i];
+      }
+      stateGradients.push_back(monomerGradient);
+    }
+
+    gradients.push_back(stateGradients);
   }
 
+  return gradients;
 }
-*/
 
 } // namespace algorithm
 } // namespace xacc

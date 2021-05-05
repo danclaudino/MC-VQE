@@ -1,4 +1,4 @@
-#include "mc-vqe.hpp"
+#include "Monomer.hpp"
 
 Monomer::Monomer(const double groundStateEnergy,
                  const double excitedStateEnergy,
@@ -46,6 +46,90 @@ void Monomer::isCenterOfMassInAngstrom(const bool isAngstrom) {
   } else {
     return;
   }
+}
+
+void Monomer::setNumberOfAtoms(const int nAtoms) { _nAtoms = nAtoms; }
+
+void Monomer::setGroundStateEnergy(const double groundStateEnergy) {
+  _groundStateEnergy = groundStateEnergy;
+}
+
+void Monomer::setExcitedStateEnergy(const double excitedStateEnergy) {
+  _excitedStateEnergy = excitedStateEnergy;
+}
+
+void Monomer::setGroundStateDipole(const Eigen::Vector3d groundStateDipole) {
+  _groundStateDipole = groundStateDipole;
+}
+
+void Monomer::setExcitedStateDipole(const Eigen::Vector3d excitedStateDipole) {
+  _excitedStateDipole = excitedStateDipole;
+}
+
+void Monomer::setTransitionDipole(const Eigen::Vector3d transitionDipole) {
+  _transitionDipole = transitionDipole;
+}
+
+void Monomer::setCenterOfMass(const Eigen::Vector3d centerOfMass) {
+  _centerOfMass = centerOfMass;
+}
+
+void Monomer::setGroundStateEnergyGradient(
+    const Eigen::MatrixXd &groundStateEnergyGradient) {
+  _groundStateEnergyGradient = groundStateEnergyGradient;
+}
+
+void Monomer::setExcitedStateEnergyGradient(
+    const Eigen::MatrixXd &excitedStateEnergyGradient) {
+  _excitedStateEnergyGradient = excitedStateEnergyGradient;
+}
+
+void Monomer::setGroundStateDipoleGradient(
+    const std::vector<Eigen::MatrixXd> &groundStateDipoleGradient) {
+  _groundStateDipoleGradient = groundStateDipoleGradient;
+}
+
+void Monomer::setExcitedStateDipoleGradient(
+    const std::vector<Eigen::MatrixXd> &excitedStateDipoleGradient) {
+  _excitedStateDipoleGradient = excitedStateDipoleGradient;
+}
+
+void Monomer::setTransitionDipoleGradient(
+    const std::vector<Eigen::MatrixXd> &transitionDipoleGradient) {
+  _transitionDipoleGradient = transitionDipoleGradient;
+}
+
+void Monomer::setCenterOfMassGradient(
+    const std::vector<Eigen::MatrixXd> &centerOfMassGradient) {
+  _centerOfMassGradient = centerOfMassGradient;
+}
+
+int Monomer::getNumberOfAtoms() {
+  return _nAtoms;
+}
+
+Eigen::MatrixXd Monomer::getGroundStateEnergyGradient() {
+  return _groundStateEnergyGradient;
+}
+
+Eigen::MatrixXd Monomer::getExcitedStateEnergyGradient() {
+  return _excitedStateEnergyGradient;
+}
+
+std::vector<Eigen::MatrixXd> Monomer::getGroundStateDipoleGradient() {
+  return _groundStateDipoleGradient;
+}
+
+std::vector<Eigen::MatrixXd> Monomer::getExcitedStateDipoleGradient() {
+  return _excitedStateDipoleGradient;
+}
+
+std::vector<Eigen::MatrixXd> Monomer::getTransitionDipoleGradient() {
+  return _transitionDipoleGradient;
+}
+
+std::vector<Eigen::MatrixXd> Monomer::getCenterOfMassGradient() {
+  return _centerOfMassGradient;
 }
 
 double Monomer::getS() {
@@ -102,4 +186,3 @@ double Monomer::getZZ(Monomer &B) {
   return 0.25 * (twoBodyH(getDipoleDifference(), B.getDipoleDifference(), r) +
                  twoBodyH(B.getDipoleDifference(), getDipoleDifference(), r));
 }
-

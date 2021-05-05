@@ -12,10 +12,7 @@
  *******************************************************************************/
 #include "mc-vqe.hpp"
 
-#include "CompositeInstruction.hpp"
-#include "Observable.hpp"
 #include "PauliOperator.hpp"
-#include "xacc_plugin.hpp"
 #include <Eigen/Eigenvalues>
 #include <iomanip>
 #include <memory>
@@ -34,6 +31,7 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
 
   logFile.open("mcvqe.log", std::ofstream::out);
   start = std::chrono::high_resolution_clock::now();
+
   if (!parameters.pointerLikeExists<Accelerator>("accelerator")) {
     xacc::error("Acc was false");
     return false;
@@ -49,7 +47,7 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
     return false;
   }
 
-  if (!parameters.stringExists("energy-file-path")) {
+  if (!parameters.stringExists("energy-data-path")) {
     xacc::error("Missing data file");
     return false;
   }
@@ -57,14 +55,25 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   optimizer = parameters.getPointerLike<Optimizer>("optimizer");
   accelerator = parameters.getPointerLike<Accelerator>("accelerator");
   nChromophores = parameters.get<int>("nChromophores");
-  dataPath = parameters.getString("data-path");
+  energyFilePath = parameters.getString("energy-data-path");
 
   // This is to include the last entangler if the system is cyclic
   if (parameters.keyExists<bool>("cyclic")) {
     isCyclic = parameters.get<bool>("cyclic");
-  } else {
-    isCyclic = false;
   }
+
+  // get entangler
+  if (parameters.stringExists("entangler")) {
+    auto tmpEntangler = parameters.getString("entangler");
+    if (!xacc::container::contains(entanglers, tmpEntangler)) {
+      xacc::warning(entanglerType + " not implemented. Using default.");
+    } else {
+      entanglerType = tmpEntangler;
+    }
+  } else {
+    xacc::warning("Using default SO(4) entangler");
+  }
+  entangler = entanglerCircuit();
 
   // Determines the level of printing
   if (parameters.keyExists<int>("log-level")) {
@@ -76,21 +85,11 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
     tnqvmLog = parameters.get<bool>("tnqvm-log");
   }
 
-  // Controls whether interference matrix is computed
-  // (For testing purposes)
+  // Controls whether the interference matrix is computed
+  // mostly for testing purposes
   if (parameters.keyExists<bool>("interference")) {
     doInterference = parameters.get<bool>("interference");
   }
-
-  if (parameters.stringExists("entangler")) {
-    auto tmpEntangler = parameters.getString("entangler");
-    if (!xacc::container::contains(entanglers, tmpEntangler)) {
-      xacc::warning(entanglerType + " not implemented. Using default.");
-    } else {
-      entanglerType = tmpEntangler; // parameters.getString("entangler");
-    }
-  }
-  entangler = entanglerCircuit();
 
   // Number of states to compute
   if (parameters.keyExists<int>("n-states")) {
@@ -103,17 +102,20 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   // if this is not provided, it defaults to the test implementation
   std::shared_ptr<xacc::Importable> import;
   if (parameters.stringExists("import")) {
-    import = xacc::getService<xacc::Importable>(
-        parameters.getString("import"));
+    import = xacc::getService<xacc::Importable>(parameters.getString("import"));
   } else {
-    import =
-        xacc::getService<xacc::Importable>("import-from-test-file");
+    import = xacc::getService<xacc::Importable>("import-from-test-file");
+  }
+  import->setEnergyDataPath(energyFilePath);
+
+  // this is for the gradients
+  if (parameters.stringExists("response-data-path")) {
+    responseFilePath = parameters.getString("response-data-path");
+    import->setResponseDataPath(responseFilePath);
   }
 
-
-  //Importable nano;
-  import->import(nChromophores);
-  monomers = import->getMonomers();
+  // get monomer data
+  monomers = import->getMonomers(nChromophores);
 
   // Convert Debye to a.u.
   if (parameters.keyExists<bool>("debye-to-au")) {
@@ -136,6 +138,7 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   computeCIS();
   computeAIEMHamiltonian();
 
+  // we may need to come back here and understand the gradients better
   if (optimizer->isGradientBased()) {
     if (parameters.stringExists("gradient-strategy")) {
       gradientStrategyName = parameters.getString("gradient-strategy");
@@ -152,18 +155,18 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
 }
 
 const std::vector<std::string> MC_VQE::requiredParameters() const {
-  return {"optimizer", "accelerator", "nChromophores", "data-path"};
+  return {"accelerator", "nChromophores", "energy-data-path"};
 }
 
 void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
 
   // entangledHamiltonian stores the Hamiltonian matrix elements
-  // in the basis of MC states
+  // in the basis of MC states/interference basis
   Eigen::MatrixXd entangledHamiltonian =
       Eigen::MatrixXd::Zero(nStates, nStates);
 
   // number of parameters to be optimized
-  // auto nOptParams = entangler->nVariables();
+
   // Only store the diagonal when it lowers the average energy
   diagonal = Eigen::VectorXd::Zero(nStates);
 
@@ -197,11 +200,6 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
           kernel->addVariables(entangler->getVariables());
           kernel->addInstructions(entangler->getInstructions());
 
-          logControl("Circuit preparation for state # " +
-                         std::to_string(state) + " [" +
-                         std::to_string(timer()) + " s]",
-                     2);
-
           if (depth == 0) {
             depth = kernel->depth();
             nGates = kernel->nInstructions();
@@ -234,15 +232,21 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
             xacc::info("Number of gradient circuit implemetation: " +
                        std::to_string(gradFsToExec.size()));
 
+            // if gradient is numerical, we need F(0)
             if (gradientStrategy->isNumerical()) {
-              // identityCoeff for the AIEM Hamiltonian is 0
-              gradientStrategy->setFunctionValue(energy);
+              auto identityCoeff =
+                  std::real(std::dynamic_pointer_cast<PauliOperator>(observable)
+                                ->getTerms()["I"]
+                                .coeff());
+              gradientStrategy->setFunctionValue(energy - identityCoeff);
             }
 
+            // run gradient circuits
             auto tmpBuffer = xacc::qalloc(buffer->size());
             accelerator->execute(tmpBuffer, gradFsToExec);
             auto buffers = tmpBuffer->getChildren();
 
+            // compute gradient vector
             gradientStrategy->compute(stateGradient, buffers);
 
             for (int i = 0; i < x.size(); i++) {
@@ -279,12 +283,7 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
         // only store the MC energies if they lower the average energy
         if (averageEnergy < oldAverageEnergy) {
           oldAverageEnergy = averageEnergy;
-          logControl(
-              "Updated average energy [" + std::to_string(timer()) + " s]", 1);
           entangledHamiltonian.diagonal() = diagonal;
-          logControl("Updated Hamiltonian diagonal [" +
-                         std::to_string(timer()) + " s]",
-                     1);
         }
 
         logControl("Optimization iteration finished [" +
@@ -322,15 +321,11 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
   buffer->addExtraInfo("circuit-depth", ExtraInfo(depth));
   buffer->addExtraInfo("n-gates", ExtraInfo(nGates));
   buffer->addExtraInfo("opt-params", ExtraInfo(result.second));
-  logControl("Persisted info in the buffer [" + std::to_string(timer()) + " s]",
-             1);
 
   if (doInterference) {
     // now construct interference states and observe Hamiltonian
     auto optimizedEntangler = result.second;
-    logControl(
-        "Computing Hamiltonian matrix elements in the interference state basis",
-        1);
+    logControl("Computing Hamiltonian in the interference state basis", 1);
     computeSubspaceHamiltonian(entangledHamiltonian, result.second);
     logControl("Computed interference basis Hamiltonian matrix elements [" +
                    std::to_string(timer()) + " s]",
@@ -388,14 +383,14 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
     kernel->addVariables(entangler->getVariables());
     kernel->addInstructions(entangler->getInstructions());
 
-    depth = kernel->depth();
-    nGates = kernel->nInstructions();
+    if (state == 0) {
+      depth = kernel->depth();
+      nGates = kernel->nInstructions();
+    }
 
     logControl("Printing circuit for state #" + std::to_string(state), 3);
     logControl(kernel->toString(), 3);
 
-    logControl("Printing instructions for state #" + std::to_string(state), 4);
-    // loop over CompositeInstructions from observe
     if (tnqvmLog) {
       xacc::set_verbose(true);
     }
@@ -442,48 +437,52 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                                  MC_VQE_Energies.data() +
                                      MC_VQE_Energies.size());
 
-std::map<std::string, std::vector<Eigen::MatrixXd>> dm;
+    std::map<std::string, std::vector<Eigen::MatrixXd>> dm;
 
-Eigen::MatrixXd X1 = Eigen::VectorXd::Zero(nStates);
-Eigen::MatrixXd Z1 = Eigen::VectorXd::Zero(nStates);
-Eigen::MatrixXd XX1 = Eigen::MatrixXd::Zero(nStates, nStates);
-Eigen::MatrixXd XZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
-Eigen::MatrixXd ZX1 = Eigen::MatrixXd::Zero(nStates, nStates);
-Eigen::MatrixXd ZZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
+    Eigen::MatrixXd X1 = Eigen::VectorXd::Zero(nStates);
+    Eigen::MatrixXd Z1 = Eigen::VectorXd::Zero(nStates);
+    Eigen::MatrixXd XX1 = Eigen::MatrixXd::Zero(nStates, nStates);
+    Eigen::MatrixXd XZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
+    Eigen::MatrixXd ZX1 = Eigen::MatrixXd::Zero(nStates, nStates);
+    Eigen::MatrixXd ZZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
 
-X1 << -0.07114968, -0.46273434;
-Z1 << 0.97345163, 0.94304295;
-XX1 << 0, 0.04008718, 0.04008718, 0;
-XZ1 << 0, -0.12594704, -0.35449684, 0;
-ZX1 = XZ1.transpose();
-ZZ1 << 0, 0.89717335, 0.89717335, 0;
+    X1 << -0.07114968, -0.46273434;
+    Z1 << 0.97345163, 0.94304295;
+    XX1 << 0, 0.04008718, 0.04008718, 0;
+    XZ1 << 0, -0.12594704, -0.35449684, 0;
+    ZX1 = XZ1.transpose();
+    ZZ1 << 0, 0.89717335, 0.89717335, 0;
 
-Eigen::MatrixXd X2 = Eigen::VectorXd::Zero(nStates);
-Eigen::MatrixXd Z2 = Eigen::VectorXd::Zero(nStates);
-Eigen::MatrixXd XX2 = Eigen::MatrixXd::Zero(nStates, nStates);
-Eigen::MatrixXd XZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
-Eigen::MatrixXd ZX2 = Eigen::MatrixXd::Zero(nStates, nStates);
-Eigen::MatrixXd ZZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
+    Eigen::MatrixXd X2 = Eigen::VectorXd::Zero(nStates);
+    Eigen::MatrixXd Z2 = Eigen::VectorXd::Zero(nStates);
+    Eigen::MatrixXd XX2 = Eigen::MatrixXd::Zero(nStates, nStates);
+    Eigen::MatrixXd XZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
+    Eigen::MatrixXd ZX2 = Eigen::MatrixXd::Zero(nStates, nStates);
+    Eigen::MatrixXd ZZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
 
-X2 << -0.21860722,  0.26865738;
-Z2 << -0.42482695,  0.41315969;
-XX2 << 0, -0.89910805, -0.89910805, 0;
-XZ2 << 0, -0.00911019, -0.1114055, 0;
-ZX2 = XZ2.transpose();
-ZZ2 << 0, -0.96768438, -0.96768438, 0;
+    X2 << -0.21860722, 0.26865738;
+    Z2 << -0.42482695, 0.41315969;
+    XX2 << 0, -0.89910805, -0.89910805, 0;
+    XZ2 << 0, -0.00911019, -0.1114055, 0;
+    ZX2 = XZ2.transpose();
+    ZZ2 << 0, -0.96768438, -0.96768438, 0;
 
-dm["X"] = {X1, X2};
-dm["Z"] = {Z1, Z2};
-dm["XX"] = {XX1, XX2};
-dm["XZ"] = {XZ1, XZ2};
-dm["ZX"] = {ZX1, ZX2};
-dm["ZZ"] = {ZZ1, ZZ2};
+    dm["X"] = {X1, X2};
+    dm["Z"] = {Z1, Z2};
+    dm["XX"] = {XX1, XX2};
+    dm["XZ"] = {XZ1, XZ2};
+    dm["ZX"] = {ZX1, ZX2};
+    dm["ZZ"] = {ZZ1, ZZ2};
 
-auto dp = getMonomerBasisDensityMatrices(dm);
+    auto mm = getMonomerBasisDensityMatrices(dm);
 
-auto hp = getDimerInteractionGradient(dp);
+    auto dp = getMonomerGradient(dm);
 
-dp.insert(hp.begin(), hp.end());
+    auto hp = getDimerInteractionGradient(mm);
+
+    dp.insert(hp.begin(), hp.end());
+
+    auto tt = getNuclearGradients(dp);
 
     return spectrum;
   } else {

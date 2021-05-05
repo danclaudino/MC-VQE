@@ -20,21 +20,21 @@
 using namespace xacc;
 
 /*
-
 TEST(MCVQETester, checkMCVQE) {
 
   std::vector<std::string> arguments(argv + 1, argv + argc);
-  int exatnLogLevel = 2, mcvqeLogLevel = 0, n_chromophores = 4, n_states = 2,
+  int exatnLogLevel = 2, mcvqeLogLevel = 1, n_chromophores = 4, n_states = 2,
       n_cycles = 1;
 
-  //xacc::set_verbose(true);
+  // xacc::set_verbose(true);
   xacc::setLoggingLevel(exatnLogLevel);
 
   // path to data file
-  auto data_path = "@CMAKE_SOURCE_DIR@/examples/";
+  auto data_path = "@CMAKE_SOURCE_DIR@/examples/18_qubit_datafile.txt";
 
   // optimizer set for a single optimization iteration
-  auto optimizer = xacc::getOptimizer("nlopt", {{"nlopt-maxeval", 1}});
+  auto optimizer = xacc::getOptimizer(
+      "nlopt", {{"algorithm", "cobyla"}, {"nlopt-maxeval", 10000}});
 
   // ExaTN visitor
   xacc::HeterogeneousMap hetMap;
@@ -43,7 +43,7 @@ TEST(MCVQETester, checkMCVQE) {
   hetMap.insert("exp-val-by-conjugate", true);
   hetMap.insert("sim-type", "statevector");
 
-  auto accelerator = xacc::getAccelerator("tnqvm", hetMap);
+  auto accelerator = xacc::getAccelerator("qpp", hetMap);
 
   // decorate accelerator
   accelerator = xacc::getAcceleratorDecorator("hpc-virtualization", accelerator,
@@ -55,39 +55,21 @@ TEST(MCVQETester, checkMCVQE) {
                       {"optimizer", optimizer},
                       {"interference", false},
                       {"n-states", n_states},
-                      {"data-path", data_path},
+                      {"energy-data-path", data_path},
                       {"cyclic", false},
+                      {"angstrom-to-au", true},
+                      {"debye-to-au", true},
                       {"log-level", mcvqeLogLevel},
                       {"tnqvm-log", true},
                       {"nChromophores", n_chromophores}});
-auto q = xacc::qalloc(n_chromophores);
-mc_vqe->execute(q);
-/*
   auto q = xacc::qalloc(n_chromophores);
-  for (int i = 0; i < 2; i++) {
-    xacc::ScopeTimer timer("mpi_timing", false);
-    mc_vqe->execute(q);
-    auto run_time = timer.getDurationMs();
 
-    // Print the result
-    if (q->hasExtraInfoKey("rank") ? ((*q)["rank"].as<int>() == 0) : true) {
-      std::cout << "Energy: "
-                << q->getInformation("opt-average-energy").as<double>()
-                << " \n";
-      std::cout << "Circuit depth: "
-                << q->getInformation("circuit-depth").as<int>() << ".\n";
-      std::cout << "Total number of gates: "
-                << q->getInformation("n-gates").as<int>() << ".\n";
-      std::cout << "Runtime: " << run_time << " ms.\n";
-    }
-  }
-  
-   EXPECT_NEAR(-0.142685, q->getInformation("opt-average-energy").as<double>(),
-   1e-4);
-   
+  mc_vqe->execute(q);
+
+  EXPECT_NEAR(-0.11018775, q->getInformation("opt-average-energy").as<double>(),
+              1e-4);
 }
-
-
+*/
 TEST(MCVQETester, checkSubspace) {
 
   std::vector<std::string> arguments(argv + 1, argv + argc);
@@ -98,8 +80,9 @@ TEST(MCVQETester, checkSubspace) {
   xacc::setLoggingLevel(exatnLogLevel);
 
   // path to data file
-  auto data_path = "@CMAKE_SOURCE_DIR@/examples/";
-  auto optimizer = xacc::getOptimizer("nlopt", {{"algorithm", "cobyla"}, {"nlopt-maxeval", 10000}, {"nlopt-maxeval", 1000}});
+  auto data_path = "@CMAKE_SOURCE_DIR@/examples/18_qubit_datafile.txt";
+  auto optimizer = xacc::getOptimizer("nlopt", {{"algorithm", "cobyla"},
+{"nlopt-maxeval", 10000}, {"nlopt-maxeval", 1000}});
 
   // ExaTN visitor
   xacc::HeterogeneousMap hetMap;
@@ -120,43 +103,43 @@ TEST(MCVQETester, checkSubspace) {
                       {"optimizer", optimizer},
                       {"interference", true},
                       {"n-states", n_states},
-                      {"data-path", data_path},
+                      {"energy-data-path", data_path},
                       {"cyclic", false},
                       {"log-level", mcvqeLogLevel},
                       {"tnqvm-log", true},
                       {"angstrom-to-au", true},
                       {"debye-to-au", true},
-                      {"entangler", "trotterize"},
                       {"nChromophores", n_chromophores}});
 auto q = xacc::qalloc(n_chromophores);
 
 
-std::vector<double> x = {-0.0045228,-0.0271437,0.0269078,-0.0318577,0.0190671,-0.000120601,-0.00932309,0.0437225,0.0138395,0.0174245,-0.0429059,0.0548143,-0.0347927,-0.00799183,0.0258266,-0.0137459};
+std::vector<double> x =
+{-0.0045228,-0.0271437,0.0269078,-0.0318577,0.0190671,-0.000120601,-0.00932309,0.0437225,0.0138395,0.0174245,-0.0429059,0.0548143,-0.0347927,-0.00799183,0.0258266,-0.0137459};
 EXPECT_NEAR(-0.14398, mc_vqe->execute(q, x)[0], 1e-3);
 
 }
 
-
-*/
 TEST(MCVQETester, checkResponse) {
 
   std::vector<std::string> arguments(argv + 1, argv + argc);
   int exatnLogLevel = 2, mcvqeLogLevel = 2, n_chromophores = 2, n_states = 2,
       n_cycles = 1;
 
-  //xacc::set_verbose(true);
+  // xacc::set_verbose(true);
   xacc::setLoggingLevel(exatnLogLevel);
 
   // path to data file
-  auto data_path = "@CMAKE_SOURCE_DIR@/examples/";
-  auto optimizer = xacc::getOptimizer("nlopt", {{"algorithm", "cobyla"}, {"nlopt-maxeval", 10000}, {"nlopt-maxeval", 1000}});
+  auto energy_data_path = "@CMAKE_SOURCE_DIR@/examples/2_qubit_datafile.txt";
+  auto response_data_path =
+      "@CMAKE_SOURCE_DIR@/examples/2_qubit_datafile_response.txt";
+  auto optimizer = xacc::getOptimizer(
+      "nlopt", {{"algorithm", "cobyla"}, {"nlopt-maxeval", 10000}});
 
   // ExaTN visitor
   xacc::HeterogeneousMap hetMap;
   hetMap.insert("tnqvm-visitor", "exatn");
   hetMap.insert("exatn-buffer-size-gb", 2);
   hetMap.insert("exp-val-by-conjugate", true);
-  hetMap.insert("sim-type", "statevector");
 
   auto accelerator = xacc::getAccelerator("qpp", hetMap);
 
@@ -170,7 +153,8 @@ TEST(MCVQETester, checkResponse) {
                       {"optimizer", optimizer},
                       {"interference", true},
                       {"n-states", n_states},
-                      {"data-path", data_path},
+                      {"energy-data-path", energy_data_path},
+                      {"response-data-path", response_data_path},
                       {"cyclic", false},
                       {"angstrom-to-au", false},
                       {"debye-to-au", false},
@@ -178,17 +162,11 @@ TEST(MCVQETester, checkResponse) {
                       {"tnqvm-log", true},
                       {"entangler", "Ry"},
                       {"nChromophores", n_chromophores}});
-auto q = xacc::qalloc(n_chromophores);
+  auto q = xacc::qalloc(n_chromophores);
 
-
-std::vector<double> x =  {-0.0863268,0.131845};
-//mc_vqe->execute(q);
-//std::cout <<  q->getInformation("opt-params").as<std::vector<double>>() << "\n";
-std::cout << mc_vqe->execute(q, x)[0] << "\n";
-//EXPECT_NEAR(-0.14398, mc_vqe->execute(q, x)[0], 1e-3);
-
+  std::vector<double> x = {-0.0863268, 0.131845};
+  EXPECT_NEAR(-0.0858046, mc_vqe->execute(q, x)[0], 1e-3);
 }
-
 
 int main(int argc, char **argv) {
   xacc::Initialize(argc, argv);

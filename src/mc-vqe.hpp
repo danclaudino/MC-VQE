@@ -15,6 +15,7 @@
 
 #include "Algorithm.hpp"
 #include "AlgorithmGradientStrategy.hpp"
+#include "Monomer.hpp"
 #include "xacc.hpp"
 #include "xacc_service.hpp"
 #include <Eigen/Dense>
@@ -24,63 +25,22 @@
 #include <string>
 #include <vector>
 
-// Helper classes
-class Monomer {
-private:
-  const double ANGSTROM2BOHR = 1.8897161646320724, DEBYE2AU = 0.393430307;
-  double _groundStateEnergy, _excitedStateEnergy;
-  Eigen::Vector3d _groundStateDipole, _excitedStateDipole, _transitionDipole,
-      _centerOfMass;
-
-double twoBodyH(const Eigen::VectorXd &mu_A, const Eigen::VectorXd &mu_B,
-                         const Eigen::VectorXd &r_AB);
-
-public:
-  Monomer() = default;
-  Monomer(const double groundStateEnergy,
-                 const double excitedStateEnergy,
-                 const Eigen::Vector3d groundStateDipole,
-                 const Eigen::Vector3d excitedStateDipole,
-                 const Eigen::Vector3d transitionDipole,
-                 const Eigen::Vector3d centerOfMass);
-
-  void isDipoleInDebye(const bool); 
-  void isCenterOfMassInAngstrom(const bool );
-  double getS();
-  double getD();
-  double getE();
-
-  Eigen::Vector3d getDipoleSum();
-  Eigen::Vector3d getDipoleDifference();
-  Eigen::Vector3d getGroundStateDipole();
-  Eigen::Vector3d getExcitedStateDipole();
-  Eigen::Vector3d getTransitionDipole();
-  Eigen::Vector3d getCenterOfMass();
-
-  double getX(Monomer &);
-  double getZ(Monomer &);
-  double getXX(Monomer &);
-  double getXZ(Monomer &);
-  double getZX(Monomer &);
-  double getZZ(Monomer &);
-};
-
-
 namespace xacc {
 
+// Helper class
 class Importable : public Identifiable {
 
 public:
   Importable() = default;
-  virtual void setPathForEnergyData(const std::string) = 0;
-  virtual void setPathForResponseData(const std::string, const std::string);
-  virtual void import(const int nChromophores) = 0;
-  virtual std::vector<Monomer> getMonomers() = 0;
+  virtual void setEnergyDataPath(const std::string) = 0;
+  virtual void setResponseDataPath(const std::string) { return; };
+  virtual std::vector<Monomer> getMonomers(const int nChromophores) = 0;
 };
 
 namespace algorithm {
 
 class MC_VQE : public Algorithm {
+  
 private:
   // gets time stamp
   double timer() const;
@@ -126,7 +86,7 @@ protected:
   // number of chromophores
   int nChromophores;
   // true if the molecular system is cyclic
-  bool isCyclic;
+  bool isCyclic = false;
   // if false, will not compute interference matrix
   bool doInterference = true;
   // CIS angles, states, and Hamiltonian
@@ -142,7 +102,7 @@ protected:
   // # number of CIS states = nChromophores + 1
   int nStates;
   // path to file with quantum chemistry data
-  std::string dataPath;
+  std::string energyFilePath, responseFilePath;
   // entangler part of the circuit
   std::shared_ptr<CompositeInstruction> entangler;
   // start time of simulation
@@ -191,7 +151,7 @@ protected:
     return monomerDM;
   };
 
-  std::vector<Eigen::MatrixXd> getVQEMultipliers(const std::vector<double> &x);
+  std::vector<Eigen::MatrixXd> getVQEMultipliers(const std::vector<double> &);
 
   std::map<std::string, std::vector<Eigen::MatrixXd>>
   getVQEDensityMatrices(const std::vector<double> &x,
@@ -207,7 +167,7 @@ protected:
                     const std::vector<Eigen::MatrixXd> &);
 
   std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getCRSDensityMatrices(const std::vector<Eigen::MatrixXd> &multipliers);
+  getCRSDensityMatrices(const std::vector<Eigen::MatrixXd> &);
 
   std::map<std::string, std::vector<Eigen::MatrixXd>> getRelaxedDensityMatrices(
       std::map<std::string, std::vector<Eigen::MatrixXd>> &,
@@ -225,7 +185,7 @@ protected:
   getDimerInteractionGradient(
       std::map<std::string, std::vector<Eigen::MatrixXd>> &);
 
-  std::vector<Eigen::MatrixXd>
+  std::vector<std::vector<Eigen::MatrixXd>>
   getNuclearGradients(std::map<std::string, std::vector<Eigen::MatrixXd>> &);
 
 public:

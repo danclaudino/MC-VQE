@@ -27,15 +27,13 @@ void MC_VQE::computeCIS() {
     sumZ += monomers[A].getD();
     for (int B : pairs[A]) {
       sumZ += monomers[A].getZ(monomers[B]);
-
-      sumZZ += monomers[A].getZZ(monomers[B]) +
-
-               monomers[B].getZZ(monomers[A]);
+      sumZZ += monomers[A].getZZ(monomers[B]) + monomers[B].getZZ(monomers[A]);
       CISHamiltonian(A + 1, A + 1) -= 2.0 * (monomers[A].getZ(monomers[B]) +
                                              monomers[A].getZZ(monomers[B]) +
                                              monomers[B].getZZ(monomers[A]));
     }
   }
+
   auto E_ref = sumZ + 0.5 * sumZZ;
 
   CISHamiltonian +=
@@ -69,7 +67,6 @@ void MC_VQE::computeCIS() {
   CISGateAngles.resize(nChromophores, nStates);
   CISGateAngles = statePreparationAngles(CISEigenstates);
 
-  // end of preProcessing
   return;
 }
 

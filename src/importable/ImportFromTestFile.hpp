@@ -13,51 +13,21 @@
 #ifndef XACC_IMPORT_FROM_TEST_FILE_HPP_
 #define XACC_IMPORT_FROM_TEST_FILE_HPP_
 
-//#include "Importable.hpp"
-#include "mc-vqe.hpp"
-#include "xacc.hpp"
-#include "xacc_plugin.hpp"
+#include "Monomer.hpp"
+#include <iomanip>
+#include <map>
+#include <string>
 #include <vector>
 
- namespace xacc {
-// namespace algorithm {
+namespace xacc {
 
-// This imports the data in the files
-// top_dir/examples/2_qubit_datafile.txt
-// top_dir/examples/18_qubit_datafile.txt
-// top_dir/examples/60_qubit_datafile.txt
 class ImportFromTestFile : public Importable {
 
-/*
-  ImportFromTestFile(const std::string energyFilePath) {
-    energyFile(energyFilePath);
-    if (file.fail()) {
-      xacc::error("Cannot access data file.");
-      return;
-    }
-  }
-
-  ImportFromTestFile(const std::string energyFilePath,
-                     const std::string responseFilePath) {
-    energyFile(energyFilePath);
-    if (file.fail()) {
-      xacc::error("Cannot access data file.");
-      return;
-    }
-    responseFile(responseFilePath);
-    if (file.fail()) {
-      xacc::error("Cannot access data file.");
-      return;
-    }
-  }
-*/
 private:
   std::ifstream energyFile, responseFile;
-  std::vector<Monomer> monomers;
 
 public:
-
-  void setPathForEnergyData(const std::string energyFilePath) override {
+  void setEnergyDataPath(const std::string energyFilePath) override {
 
     energyFile.open(energyFilePath);
     if (energyFile.fail()) {
@@ -67,13 +37,8 @@ public:
     return;
   }
 
-  void setPathForResponseData(const std::string energyFilePath, const std::string responseFilePath) override {
+  void setResponseDataPath(const std::string responseFilePath) override {
 
-    energyFile.open(energyFilePath);
-    if (energyFile.fail()) {
-      xacc::error("Cannot access data file.");
-      return;
-    }
     responseFile.open(responseFilePath);
     if (responseFile.fail()) {
       xacc::error("Cannot access data file.");
@@ -83,72 +48,115 @@ public:
     return;
   }
 
-  void import(const int nChromophores) override {
+  std::vector<Monomer> getMonomers(const int nChromophores) override {
 
-    std::string line, tmp, comp;
-    Eigen::Vector3d tmpVec;
-    int xyz, start;
+    auto getVector = [&](const std::string line) {
+      std::string tmp = line.substr(line.find(":") + 1), comp;
+      std::stringstream ss(tmp);
+      Eigen::Vector3d vec;
+      int xyz = 0;
+      while (std::getline(ss, comp, ',')) {
+        vec(xyz++) = std::stod(comp);
+      }
+      return vec;
+    };
+
+    auto getGradient = [&](const int nAtoms) {
+      std::string line;
+      Eigen::MatrixXd gradient(nAtoms, 3);
+      for (int i = 0; i < nAtoms; i++) {
+        std::getline(responseFile, line);
+        gradient.row(i) = getVector(line);
+      }
+      return gradient;
+    };
+
+    std::string line;
+    std::vector<Monomer> monomers;
     // scans output file and retrieve data
     for (int A = 0; A < nChromophores; A++) {
+
+      Monomer m;
 
       // this is just the number label of the chromophore
       std::getline(energyFile, line);
       std::getline(energyFile, line);
-      auto nAtoms = std::stoi(line.substr(line.find(":") + 1));
-      std::getline(energyFile, line);
       auto groundStateEnergy = std::stod(line.substr(line.find(":") + 1));
+      m.setGroundStateEnergy(groundStateEnergy);
+
       std::getline(energyFile, line);
       auto excitedStateEnergy = std::stod(line.substr(line.find(":") + 1));
+      m.setExcitedStateEnergy(excitedStateEnergy);
 
       std::getline(energyFile, line);
-      tmp = line.substr(line.find(":") + 1);
-      std::stringstream centerOfMassStream(tmp);
-      Eigen::Vector3d centerOfMass = Eigen::Vector3d::Zero();
-      xyz = 0;
-      while (std::getline(centerOfMassStream, comp, ',')) {
-        centerOfMass(xyz++) = std::stod(comp); // * ANGSTROM2BOHR;
-      }
+      m.setCenterOfMass(getVector(line));
 
       std::getline(energyFile, line);
-      tmp = line.substr(line.find(":") + 1);
-      Eigen::Vector3d groundStateDipole = Eigen::Vector3d::Zero();
-      std::stringstream gsDipoleStream(tmp);
-      xyz = 0;
-      while (std::getline(gsDipoleStream, comp, ',')) {
-        groundStateDipole(xyz++) = std::stod(comp); // * DEBYE2AU;
-      }
+      m.setGroundStateDipole(getVector(line));
 
       std::getline(energyFile, line);
-      tmp = line.substr(line.find(":") + 1);
-      std::stringstream esDipoleStream(tmp);
-      Eigen::Vector3d excitedStateDipole = Eigen::Vector3d::Zero();
-      xyz = 0;
-      while (std::getline(esDipoleStream, comp, ',')) {
-        excitedStateDipole(xyz++) = std::stod(comp); // * DEBYE2AU;
-      }
+      m.setExcitedStateDipole(getVector(line));
 
       std::getline(energyFile, line);
-      tmp = line.substr(line.find(":") + 1);
-      std::stringstream tDipoleStream(tmp);
-      xyz = 0;
-      Eigen::Vector3d transitionDipole = Eigen::Vector3d::Zero();
-      while (std::getline(tDipoleStream, comp, ',')) {
-        transitionDipole(xyz++) = std::stod(comp);
+      m.setTransitionDipole(getVector(line));
+
+      // read in data for response part
+      if (responseFile.is_open()) {
+        std::getline(responseFile, line);
+        std::getline(responseFile, line);
+        auto nAtoms = std::stoi(line.substr(line.find(":") + 1));
+        m.setNumberOfAtoms(nAtoms);
+
+        std::getline(responseFile, line);
+        m.setGroundStateEnergyGradient(getGradient(nAtoms));
+
+        std::getline(responseFile, line);
+        m.setExcitedStateEnergyGradient(getGradient(nAtoms));
+
+        std::vector<Eigen::MatrixXd> centerOfMassGradient;
+        for (int i = 0; i < 3; i++) {
+          std::getline(responseFile, line);
+          centerOfMassGradient.push_back(getGradient(nAtoms));
+        }
+        m.setCenterOfMassGradient(centerOfMassGradient);
+
+        std::vector<Eigen::MatrixXd> groundStateDipoleGradient;
+        for (int i = 0; i < 3; i++) {
+          std::getline(responseFile, line);
+          groundStateDipoleGradient.push_back(getGradient(nAtoms));
+        }
+        m.setGroundStateDipoleGradient(groundStateDipoleGradient);
+
+        std::vector<Eigen::MatrixXd> excitedStateDipoleGradient;
+        for (int i = 0; i < 3; i++) {
+          std::getline(responseFile, line);
+          excitedStateDipoleGradient.push_back(getGradient(nAtoms));
+        }
+        m.setExcitedStateDipoleGradient(excitedStateDipoleGradient);
+
+        std::vector<Eigen::MatrixXd> transitionDipoleGradient;
+        for (int i = 0; i < 3; i++) {
+          std::getline(responseFile, line);
+          transitionDipoleGradient.push_back(getGradient(nAtoms));
+        }
+        m.setTransitionDipoleGradient(transitionDipoleGradient);
+
       }
 
-      Monomer m(groundStateEnergy, excitedStateEnergy, groundStateDipole,
-                excitedStateDipole, transitionDipole, centerOfMass);
       monomers.push_back(m);
     }
+
     energyFile.close();
-    return;
+    if (responseFile.is_open()) {
+      responseFile.close();
+    }
+
+    return monomers;
   }
 
-  std::vector<Monomer> getMonomers() override { return monomers; }
   const std::string name() const override { return "import-from-test-file"; }
   const std::string description() const override { return ""; }
 };
 
-//} // namespace algorithm
 } // namespace xacc
 #endif

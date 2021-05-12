@@ -40,7 +40,7 @@ public:
 namespace algorithm {
 
 class MC_VQE : public Algorithm {
-  
+
 private:
   // gets time stamp
   double timer() const;
@@ -89,6 +89,8 @@ protected:
   bool isCyclic = false;
   // if false, will not compute interference matrix
   bool doInterference = true;
+  // compute gradients
+  bool doGradient = false;
   // CIS angles, states, and Hamiltonian
   Eigen::MatrixXd CISGateAngles, CISEigenstates, CISHamiltonian;
   // CIS eigenenergies

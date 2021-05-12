@@ -516,14 +516,13 @@ MC_VQE::getCRSMultipliers(const std::vector<double> &x,
     hessian.push_back(stateHessian);
   }
 
-  Eigen::MatrixXd G1 = Eigen::MatrixXd::Zero(nStates + 1, nStates);
-  Eigen::MatrixXd G2 = Eigen::MatrixXd::Zero(nStates + 1, nStates);
-  G1 << 0.00110366, 0.00269595, 0.00589268, -0.00094224, 0.00400579,
-      -0.00209204;
-  G2 << 0.00061209, -0.0017159, -0.00178271, 0.00328989, 0.00312522, 0.00616533;
-  gradients.clear();
-  gradients.push_back(-G1);
-  gradients.push_back(-G2);
+  // Eigen::MatrixXd G1 = Eigen::MatrixXd::Zero(nStates + 1, nStates);
+  // Eigen::MatrixXd G2 = Eigen::MatrixXd::Zero(nStates + 1, nStates);
+  // G1 << 0.00110366, 0.00269595, 0.00589268, -0.00094224, 0.00400579,
+  //    -0.00209204;
+  // G2 << 0.00061209, -0.0017159, -0.00178271, 0.00328989, 0.00312522,
+  // 0.00616533; gradients.clear(); gradients.push_back(-G1);
+  // gradients.push_back(-G2);
 
   // Eq. 136
   std::vector<Eigen::MatrixXd> cpCRSMultipliers;
@@ -561,8 +560,8 @@ MC_VQE::getCRSDensityMatrices(
            CISEigenstates.col(cisState).transpose();
     }
 
-    D << -0.01178758, -0.01051503, -0.02515445, -0.01051503, 0.01726251,
-        0.0133979, -0.02515445, 0.0133979, -0.00547493;
+    // D << -0.01178758, -0.01051503, -0.02515445, -0.01051503, 0.01726251,
+    //    0.0133979, -0.02515445, 0.0133979, -0.00547493;
 
     std::vector<Eigen::MatrixXd> termPDM;
     for (auto termStr : {"X", "Z", "XX", "XZ", "ZZ"}) {

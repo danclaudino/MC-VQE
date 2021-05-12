@@ -15,6 +15,7 @@
 #include "PauliOperator.hpp"
 #include <Eigen/Eigenvalues>
 #include <iomanip>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,6 +90,11 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   // mostly for testing purposes
   if (parameters.keyExists<bool>("interference")) {
     doInterference = parameters.get<bool>("interference");
+  }
+
+  // boolean to control whether to compute gradients
+  if (parameters.keyExists<bool>("mc-vqe-gradient")) {
+    doGradient = parameters.get<bool>("mc-vqe-gradient");
   }
 
   // Number of states to compute
@@ -356,6 +362,95 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
                1);
   }
 
+  if (doInterference) {
+    // now construct interference states and observe Hamiltonian
+    logControl(
+        "Computing Hamiltonian matrix elements in the interference state basis",
+        1);
+
+    computeSubspaceHamiltonian(entangledHamiltonian, x);
+    logControl("Diagonalizing entangled Hamiltonian", 1);
+    // Diagonalizing the entangledHamiltonian gives the energy spectrum
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(
+        entangledHamiltonian);
+    auto MC_VQE_Energies = EigenSolver.eigenvalues();
+    subSpaceRotation = EigenSolver.eigenvectors();
+
+    std::stringstream ss;
+    ss << "MC-VQE energy spectrum";
+    for (auto e : MC_VQE_Energies) {
+      ss << "\n" << std::setprecision(9) << e;
+    }
+
+    buffer->addExtraInfo("opt-spectrum", ExtraInfo(ss.str()));
+    logControl(ss.str(), 1);
+
+    std::vector<double> spectrum(MC_VQE_Energies.data(),
+                                 MC_VQE_Energies.data() +
+                                     MC_VQE_Energies.size());
+
+    if (doGradient) {
+
+      /*
+      std::map<std::string, std::vector<Eigen::MatrixXd>> dm;
+
+      Eigen::MatrixXd X1 = Eigen::VectorXd::Zero(nStates);
+      Eigen::MatrixXd Z1 = Eigen::VectorXd::Zero(nStates);
+      Eigen::MatrixXd XX1 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd XZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd ZX1 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd ZZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
+
+      X1 << -0.07114968, -0.46273434;
+      Z1 << 0.97345163, 0.94304295;
+      XX1 << 0, 0.04008718, 0.04008718, 0;
+      XZ1 << 0, -0.12594704, -0.35449684, 0;
+      ZX1 = XZ1.transpose();
+      ZZ1 << 0, 0.89717335, 0.89717335, 0;
+
+      Eigen::MatrixXd X2 = Eigen::VectorXd::Zero(nStates);
+      Eigen::MatrixXd Z2 = Eigen::VectorXd::Zero(nStates);
+      Eigen::MatrixXd XX2 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd XZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd ZX2 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd ZZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
+
+      X2 << -0.21860722, 0.26865738;
+      Z2 << -0.42482695, 0.41315969;
+      XX2 << 0, -0.89910805, -0.89910805, 0;
+      XZ2 << 0, -0.00911019, -0.1114055, 0;
+      ZX2 = XZ2.transpose();
+      ZZ2 << 0, -0.96768438, -0.96768438, 0;
+
+      dm["X"] = {X1, X2};
+      dm["Z"] = {Z1, Z2};
+      dm["XX"] = {XX1, XX2};
+      dm["XZ"] = {XZ1, XZ2};
+      dm["ZX"] = {ZX1, ZX2};
+      dm["ZZ"] = {ZZ1, ZZ2};
+      */
+
+      auto unrelaxedDensityMatrices = getUnrelaxedDensityMatrices(x);
+      auto vqeMultipliers = getVQEMultipliers(x);
+      auto vqeDensityMatrices = getVQEDensityMatrices(x, vqeMultipliers);
+      auto crsMultipliers = getCRSMultipliers(x, vqeMultipliers);
+      auto crsDensityMatrices = getCRSDensityMatrices(crsMultipliers);
+      auto relaxedDensityMatrices = getRelaxedDensityMatrices(
+          unrelaxedDensityMatrices, vqeDensityMatrices, crsDensityMatrices);
+
+      auto monomerDensityMatrices =
+          getMonomerBasisDensityMatrices(relaxedDensityMatrices);
+
+      auto monomerGradient = getMonomerGradient(relaxedDensityMatrices);
+
+      auto dimerGradient = getDimerInteractionGradient(monomerDensityMatrices);
+
+      monomerGradient.insert(dimerGradient.begin(), dimerGradient.end());
+
+      auto nuclearGradient = getNuclearGradients(monomerGradient);
+    }
+  }
+
   logFile.close();
   return;
 }
@@ -437,54 +532,68 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
                                  MC_VQE_Energies.data() +
                                      MC_VQE_Energies.size());
 
-    std::map<std::string, std::vector<Eigen::MatrixXd>> dm;
+    if (doGradient) {
 
-    Eigen::MatrixXd X1 = Eigen::VectorXd::Zero(nStates);
-    Eigen::MatrixXd Z1 = Eigen::VectorXd::Zero(nStates);
-    Eigen::MatrixXd XX1 = Eigen::MatrixXd::Zero(nStates, nStates);
-    Eigen::MatrixXd XZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
-    Eigen::MatrixXd ZX1 = Eigen::MatrixXd::Zero(nStates, nStates);
-    Eigen::MatrixXd ZZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
+      /*
+      std::map<std::string, std::vector<Eigen::MatrixXd>> dm;
 
-    X1 << -0.07114968, -0.46273434;
-    Z1 << 0.97345163, 0.94304295;
-    XX1 << 0, 0.04008718, 0.04008718, 0;
-    XZ1 << 0, -0.12594704, -0.35449684, 0;
-    ZX1 = XZ1.transpose();
-    ZZ1 << 0, 0.89717335, 0.89717335, 0;
+      Eigen::MatrixXd X1 = Eigen::VectorXd::Zero(nStates);
+      Eigen::MatrixXd Z1 = Eigen::VectorXd::Zero(nStates);
+      Eigen::MatrixXd XX1 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd XZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd ZX1 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd ZZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
 
-    Eigen::MatrixXd X2 = Eigen::VectorXd::Zero(nStates);
-    Eigen::MatrixXd Z2 = Eigen::VectorXd::Zero(nStates);
-    Eigen::MatrixXd XX2 = Eigen::MatrixXd::Zero(nStates, nStates);
-    Eigen::MatrixXd XZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
-    Eigen::MatrixXd ZX2 = Eigen::MatrixXd::Zero(nStates, nStates);
-    Eigen::MatrixXd ZZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
+      X1 << -0.07114968, -0.46273434;
+      Z1 << 0.97345163, 0.94304295;
+      XX1 << 0, 0.04008718, 0.04008718, 0;
+      XZ1 << 0, -0.12594704, -0.35449684, 0;
+      ZX1 = XZ1.transpose();
+      ZZ1 << 0, 0.89717335, 0.89717335, 0;
 
-    X2 << -0.21860722, 0.26865738;
-    Z2 << -0.42482695, 0.41315969;
-    XX2 << 0, -0.89910805, -0.89910805, 0;
-    XZ2 << 0, -0.00911019, -0.1114055, 0;
-    ZX2 = XZ2.transpose();
-    ZZ2 << 0, -0.96768438, -0.96768438, 0;
+      Eigen::MatrixXd X2 = Eigen::VectorXd::Zero(nStates);
+      Eigen::MatrixXd Z2 = Eigen::VectorXd::Zero(nStates);
+      Eigen::MatrixXd XX2 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd XZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd ZX2 = Eigen::MatrixXd::Zero(nStates, nStates);
+      Eigen::MatrixXd ZZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
 
-    dm["X"] = {X1, X2};
-    dm["Z"] = {Z1, Z2};
-    dm["XX"] = {XX1, XX2};
-    dm["XZ"] = {XZ1, XZ2};
-    dm["ZX"] = {ZX1, ZX2};
-    dm["ZZ"] = {ZZ1, ZZ2};
+      X2 << -0.21860722, 0.26865738;
+      Z2 << -0.42482695, 0.41315969;
+      XX2 << 0, -0.89910805, -0.89910805, 0;
+      XZ2 << 0, -0.00911019, -0.1114055, 0;
+      ZX2 = XZ2.transpose();
+      ZZ2 << 0, -0.96768438, -0.96768438, 0;
 
-    auto mm = getMonomerBasisDensityMatrices(dm);
+      dm["X"] = {X1, X2};
+      dm["Z"] = {Z1, Z2};
+      dm["XX"] = {XX1, XX2};
+      dm["XZ"] = {XZ1, XZ2};
+      dm["ZX"] = {ZX1, ZX2};
+      dm["ZZ"] = {ZZ1, ZZ2};
+      */
 
-    auto dp = getMonomerGradient(dm);
+      auto unrelaxedDensityMatrices = getUnrelaxedDensityMatrices(x);
+      auto vqeMultipliers = getVQEMultipliers(x);
+      auto vqeDensityMatrices = getVQEDensityMatrices(x, vqeMultipliers);
+      auto crsMultipliers = getCRSMultipliers(x, vqeMultipliers);
+      auto crsDensityMatrices = getCRSDensityMatrices(crsMultipliers);
+      auto relaxedDensityMatrices = getRelaxedDensityMatrices(
+          unrelaxedDensityMatrices, vqeDensityMatrices, crsDensityMatrices);
 
-    auto hp = getDimerInteractionGradient(mm);
+      auto monomerDensityMatrices =
+          getMonomerBasisDensityMatrices(relaxedDensityMatrices);
 
-    dp.insert(hp.begin(), hp.end());
+      auto monomerGradient = getMonomerGradient(relaxedDensityMatrices);
 
-    auto tt = getNuclearGradients(dp);
+      auto dimerGradient = getDimerInteractionGradient(monomerDensityMatrices);
 
+      monomerGradient.insert(dimerGradient.begin(), dimerGradient.end());
+
+      auto nuclearGradient = getNuclearGradients(monomerGradient);
+    }
     return spectrum;
+
   } else {
     return {};
   }

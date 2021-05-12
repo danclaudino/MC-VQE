@@ -158,6 +158,7 @@ TEST(MCVQETester, checkResponse) {
                       {"cyclic", false},
                       {"angstrom-to-au", false},
                       {"debye-to-au", false},
+                      {"mc-vqe-gradient", true},
                       {"log-level", mcvqeLogLevel},
                       {"tnqvm-log", true},
                       {"entangler", "Ry"},

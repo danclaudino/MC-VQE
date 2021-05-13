@@ -93,8 +93,8 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   }
 
   // boolean to control whether to compute gradients
-  if (parameters.keyExists<bool>("mc-vqe-gradient")) {
-    doGradient = parameters.get<bool>("mc-vqe-gradient");
+  if (parameters.keyExists<bool>("nuclear-gradient")) {
+    doGradient = parameters.get<bool>("nuclear-gradient");
   }
 
   // Number of states to compute
@@ -144,7 +144,8 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   computeCIS();
   computeAIEMHamiltonian();
 
-  // we may need to come back here and understand the gradients better
+  // this is for gradient-based optimization
+  // NOTE: the default entangler has a hard time converging with gradients
   if (optimizer->isGradientBased()) {
     if (parameters.stringExists("gradient-strategy")) {
       gradientStrategyName = parameters.getString("gradient-strategy");
@@ -176,16 +177,15 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
   // Only store the diagonal when it lowers the average energy
   diagonal = Eigen::VectorXd::Zero(nStates);
 
-  // store circuit depth, # of gates and pass to buffer
-  int depth = 0, nGates = 0;
-
   // optimization history
   std::vector<double> optHistory;
 
   // all CIS states share the same parameterized entangler gates
   auto nOptParams = entangler->nVariables();
 
+  // energy from a previous optimization iteration
   double oldAverageEnergy = 0.0;
+
   // f is the objective function
   OptFunction f(
       [&, this](const std::vector<double> &x, std::vector<double> &dx) {
@@ -204,11 +204,13 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
           // retrieve CIS state preparation instructions and add entangler
           auto kernel = statePreparationCircuit(CISGateAngles.col(state));
           kernel->addVariables(entangler->getVariables());
-          kernel->addInstructions(entangler->getInstructions());
+          kernel->addInstructions(std::move(entangler->getInstructions()),
+                                  false);
 
-          if (depth == 0) {
-            depth = kernel->depth();
-            nGates = kernel->nInstructions();
+          // store info about the circuit in the buffer
+          if (state == 0) {
+            buffer->addExtraInfo("circuit-depth", ExtraInfo(kernel->depth()));
+            buffer->addExtraInfo("n-gates", ExtraInfo(kernel->nInstructions()));
           }
 
           // Call VQE objective function
@@ -265,6 +267,7 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
           averageEnergy += energy;
         }
 
+        // norm of gradient vector
         if (gradientStrategy) {
 
           double sum = 0.0;
@@ -272,10 +275,10 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
             sum += x * x;
 
           std::stringstream ss;
-          ss << "G(" << (!dx.empty() ? std::to_string(dx[0]) : "");
+          ss << "||G(" << (!dx.empty() ? std::to_string(dx[0]) : "");
           for (int i = 1; i < dx.size(); i++)
             ss << "," << dx[i];
-          ss << ") = " << sqrt(sum);
+          ss << ")|| = " << sqrt(sum);
           logControl(ss.str() + "\n", 2);
         }
 
@@ -323,47 +326,12 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
   logControl("MC-VQE optimization complete [" + std::to_string(timer()) + " s]",
              1);
 
+  auto x = result.second;
   buffer->addExtraInfo("opt-average-energy", ExtraInfo(result.first));
-  buffer->addExtraInfo("circuit-depth", ExtraInfo(depth));
-  buffer->addExtraInfo("n-gates", ExtraInfo(nGates));
-  buffer->addExtraInfo("opt-params", ExtraInfo(result.second));
+  buffer->addExtraInfo("opt-params", ExtraInfo(x));
 
   if (doInterference) {
-    // now construct interference states and observe Hamiltonian
-    auto optimizedEntangler = result.second;
-    logControl("Computing Hamiltonian in the interference state basis", 1);
-    computeSubspaceHamiltonian(entangledHamiltonian, result.second);
-    logControl("Computed interference basis Hamiltonian matrix elements [" +
-                   std::to_string(timer()) + " s]",
-               1);
-
-    logControl("Diagonalizing entangled Hamiltonian", 1);
-
-    // Diagonalizing the entangledHamiltonian gives the energy spectrum
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> EigenSolver(
-        entangledHamiltonian);
-    auto MC_VQE_Energies = EigenSolver.eigenvalues();
-    subSpaceRotation = EigenSolver.eigenvectors();
-
-    logControl("Diagonalized entangled Hamiltonian [" +
-                   std::to_string(timer()) + " s]",
-               1);
-
-    std::stringstream ss;
-    ss << "MC-VQE energy spectrum";
-    for (auto e : MC_VQE_Energies) {
-      ss << "\n" << std::setprecision(9) << e;
-    }
-
-    buffer->addExtraInfo("opt-spectrum", ExtraInfo(ss.str()));
-    logControl(ss.str(), 1);
-
-    logControl("MC-VQE simulation finished [" + std::to_string(timer()) + " s]",
-               1);
-  }
-
-  if (doInterference) {
-    // now construct interference states and observe Hamiltonian
+    // construct interference basis Hamiltonian
     logControl(
         "Computing Hamiltonian matrix elements in the interference state basis",
         1);
@@ -385,51 +353,9 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
     buffer->addExtraInfo("opt-spectrum", ExtraInfo(ss.str()));
     logControl(ss.str(), 1);
 
-    std::vector<double> spectrum(MC_VQE_Energies.data(),
-                                 MC_VQE_Energies.data() +
-                                     MC_VQE_Energies.size());
-
     if (doGradient) {
 
-      /*
-      std::map<std::string, std::vector<Eigen::MatrixXd>> dm;
-
-      Eigen::MatrixXd X1 = Eigen::VectorXd::Zero(nStates);
-      Eigen::MatrixXd Z1 = Eigen::VectorXd::Zero(nStates);
-      Eigen::MatrixXd XX1 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd XZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd ZX1 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd ZZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
-
-      X1 << -0.07114968, -0.46273434;
-      Z1 << 0.97345163, 0.94304295;
-      XX1 << 0, 0.04008718, 0.04008718, 0;
-      XZ1 << 0, -0.12594704, -0.35449684, 0;
-      ZX1 = XZ1.transpose();
-      ZZ1 << 0, 0.89717335, 0.89717335, 0;
-
-      Eigen::MatrixXd X2 = Eigen::VectorXd::Zero(nStates);
-      Eigen::MatrixXd Z2 = Eigen::VectorXd::Zero(nStates);
-      Eigen::MatrixXd XX2 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd XZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd ZX2 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd ZZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
-
-      X2 << -0.21860722, 0.26865738;
-      Z2 << -0.42482695, 0.41315969;
-      XX2 << 0, -0.89910805, -0.89910805, 0;
-      XZ2 << 0, -0.00911019, -0.1114055, 0;
-      ZX2 = XZ2.transpose();
-      ZZ2 << 0, -0.96768438, -0.96768438, 0;
-
-      dm["X"] = {X1, X2};
-      dm["Z"] = {Z1, Z2};
-      dm["XX"] = {XX1, XX2};
-      dm["XZ"] = {XZ1, XZ2};
-      dm["ZX"] = {ZX1, ZX2};
-      dm["ZZ"] = {ZZ1, ZZ2};
-      */
-
+      // compute density matrices
       auto unrelaxedDensityMatrices = getUnrelaxedDensityMatrices(x);
       auto vqeMultipliers = getVQEMultipliers(x);
       auto vqeDensityMatrices = getVQEDensityMatrices(x, vqeMultipliers);
@@ -438,16 +364,39 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
       auto relaxedDensityMatrices = getRelaxedDensityMatrices(
           unrelaxedDensityMatrices, vqeDensityMatrices, crsDensityMatrices);
 
+      // change to monomer basis
+      auto monomerBasisDensityMatrices =
+          getDensityMatricesInMonomerBasis(relaxedDensityMatrices);
+
+      // get monomer and dimer density matrices in monomer basis
       auto monomerDensityMatrices =
-          getMonomerBasisDensityMatrices(relaxedDensityMatrices);
+          getMonomerDensityMatrices(relaxedDensityMatrices);
+      auto dimerDensityMatrices =
+          getDimerInteractionDensityMatrices(monomerBasisDensityMatrices);
+      monomerDensityMatrices.insert(dimerDensityMatrices.begin(),
+                                    dimerDensityMatrices.end());
 
-      auto monomerGradient = getMonomerGradient(relaxedDensityMatrices);
+      // compute gradient
+      auto nuclearGradient = getNuclearGradients(monomerDensityMatrices);
 
-      auto dimerGradient = getDimerInteractionGradient(monomerDensityMatrices);
+      // flatten gradient
+      std::vector<double> gradientVector;
+      for (int state = 0; state < nStates; state++) {
 
-      monomerGradient.insert(dimerGradient.begin(), dimerGradient.end());
+        auto stateGradient = nuclearGradient[state];
+        for (int A = 0; A < nChromophores; A++) {
 
-      auto nuclearGradient = getNuclearGradients(monomerGradient);
+          auto monomerGradient = stateGradient[A];
+          auto nAtoms = monomers[A].getNumberOfAtoms();
+
+          for (int atom = 0; atom < nAtoms; atom++) {
+            for (int coord = 0; coord < 3; coord++) {
+              gradientVector.push_back(monomerGradient(atom, coord));
+            }
+          }
+        }
+      }
+      buffer->addExtraInfo("gradient", ExtraInfo(gradientVector));
     }
   }
 
@@ -472,11 +421,10 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
   double averageEnergy = 0.0;
   for (int state = 0; state < nStates; state++) { // loop over states
 
-    // prepare CIS state
+    // retrieve CIS state preparation instructions and add entangler
     auto kernel = statePreparationCircuit(CISGateAngles.col(state));
-    // add entangler variables
     kernel->addVariables(entangler->getVariables());
-    kernel->addInstructions(entangler->getInstructions());
+    kernel->addInstructions(std::move(entangler->getInstructions()), false);
 
     if (state == 0) {
       depth = kernel->depth();
@@ -506,10 +454,10 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
   buffer->addExtraInfo("circuit-depth", ExtraInfo(depth));
   buffer->addExtraInfo("n-gates", ExtraInfo(nGates));
   if (doInterference) {
-    // now construct interference states and observe Hamiltonian
-    logControl(
-        "Computing Hamiltonian matrix elements in the interference state basis",
-        1);
+    // construct interference basis Hamiltonian
+    logControl("Computing Hamiltonian matrix elements in the interference "
+               "state basis",
+               1);
 
     computeSubspaceHamiltonian(entangledHamiltonian, x);
     logControl("Diagonalizing entangled Hamiltonian", 1);
@@ -534,45 +482,7 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
 
     if (doGradient) {
 
-      /*
-      std::map<std::string, std::vector<Eigen::MatrixXd>> dm;
-
-      Eigen::MatrixXd X1 = Eigen::VectorXd::Zero(nStates);
-      Eigen::MatrixXd Z1 = Eigen::VectorXd::Zero(nStates);
-      Eigen::MatrixXd XX1 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd XZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd ZX1 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd ZZ1 = Eigen::MatrixXd::Zero(nStates, nStates);
-
-      X1 << -0.07114968, -0.46273434;
-      Z1 << 0.97345163, 0.94304295;
-      XX1 << 0, 0.04008718, 0.04008718, 0;
-      XZ1 << 0, -0.12594704, -0.35449684, 0;
-      ZX1 = XZ1.transpose();
-      ZZ1 << 0, 0.89717335, 0.89717335, 0;
-
-      Eigen::MatrixXd X2 = Eigen::VectorXd::Zero(nStates);
-      Eigen::MatrixXd Z2 = Eigen::VectorXd::Zero(nStates);
-      Eigen::MatrixXd XX2 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd XZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd ZX2 = Eigen::MatrixXd::Zero(nStates, nStates);
-      Eigen::MatrixXd ZZ2 = Eigen::MatrixXd::Zero(nStates, nStates);
-
-      X2 << -0.21860722, 0.26865738;
-      Z2 << -0.42482695, 0.41315969;
-      XX2 << 0, -0.89910805, -0.89910805, 0;
-      XZ2 << 0, -0.00911019, -0.1114055, 0;
-      ZX2 = XZ2.transpose();
-      ZZ2 << 0, -0.96768438, -0.96768438, 0;
-
-      dm["X"] = {X1, X2};
-      dm["Z"] = {Z1, Z2};
-      dm["XX"] = {XX1, XX2};
-      dm["XZ"] = {XZ1, XZ2};
-      dm["ZX"] = {ZX1, ZX2};
-      dm["ZZ"] = {ZZ1, ZZ2};
-      */
-
+      // compute density matrices
       auto unrelaxedDensityMatrices = getUnrelaxedDensityMatrices(x);
       auto vqeMultipliers = getVQEMultipliers(x);
       auto vqeDensityMatrices = getVQEDensityMatrices(x, vqeMultipliers);
@@ -580,17 +490,38 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
       auto crsDensityMatrices = getCRSDensityMatrices(crsMultipliers);
       auto relaxedDensityMatrices = getRelaxedDensityMatrices(
           unrelaxedDensityMatrices, vqeDensityMatrices, crsDensityMatrices);
+      auto monomerBasisDensityMatrices =
+          getDensityMatricesInMonomerBasis(relaxedDensityMatrices);
 
+      // get monomer and dimer density matrices in monomer basis
       auto monomerDensityMatrices =
-          getMonomerBasisDensityMatrices(relaxedDensityMatrices);
+          getMonomerDensityMatrices(relaxedDensityMatrices);
+      auto dimerDensityMatrices =
+          getDimerInteractionDensityMatrices(monomerBasisDensityMatrices);
+      monomerDensityMatrices.insert(dimerDensityMatrices.begin(),
+                                    dimerDensityMatrices.end());
 
-      auto monomerGradient = getMonomerGradient(relaxedDensityMatrices);
+      // compute gradient
+      auto nuclearGradient = getNuclearGradients(monomerDensityMatrices);
 
-      auto dimerGradient = getDimerInteractionGradient(monomerDensityMatrices);
+      // flatten gradient
+      std::vector<double> gradientVector;
+      for (int state = 0; state < nStates; state++) {
 
-      monomerGradient.insert(dimerGradient.begin(), dimerGradient.end());
+        auto stateGradient = nuclearGradient[state];
+        for (int A = 0; A < nChromophores; A++) {
 
-      auto nuclearGradient = getNuclearGradients(monomerGradient);
+          auto monomerGradient = stateGradient[A];
+          auto nAtoms = monomers[A].getNumberOfAtoms();
+
+          for (int atom = 0; atom < nAtoms; atom++) {
+            for (int coord = 0; coord < 3; coord++) {
+              gradientVector.push_back(monomerGradient(atom, coord));
+            }
+          }
+        }
+      }
+      buffer->addExtraInfo("gradient", ExtraInfo(gradientVector));
     }
     return spectrum;
 

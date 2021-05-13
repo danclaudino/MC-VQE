@@ -76,13 +76,14 @@ TEST(MCVQETester, checkSubspace) {
   int exatnLogLevel = 2, mcvqeLogLevel = 2, n_chromophores = 4, n_states = 2,
       n_cycles = 1;
 
-  //xacc::set_verbose(true);
+  // xacc::set_verbose(true);
   xacc::setLoggingLevel(exatnLogLevel);
 
   // path to data file
   auto data_path = "@CMAKE_SOURCE_DIR@/examples/18_qubit_datafile.txt";
   auto optimizer = xacc::getOptimizer("nlopt", {{"algorithm", "cobyla"},
-{"nlopt-maxeval", 10000}, {"nlopt-maxeval", 1000}});
+                                                {"nlopt-maxeval", 10000},
+                                                {"nlopt-maxeval", 1000}});
 
   // ExaTN visitor
   xacc::HeterogeneousMap hetMap;
@@ -110,13 +111,13 @@ TEST(MCVQETester, checkSubspace) {
                       {"angstrom-to-au", true},
                       {"debye-to-au", true},
                       {"nChromophores", n_chromophores}});
-auto q = xacc::qalloc(n_chromophores);
+  auto q = xacc::qalloc(n_chromophores);
 
-
-std::vector<double> x =
-{-0.0045228,-0.0271437,0.0269078,-0.0318577,0.0190671,-0.000120601,-0.00932309,0.0437225,0.0138395,0.0174245,-0.0429059,0.0548143,-0.0347927,-0.00799183,0.0258266,-0.0137459};
-EXPECT_NEAR(-0.14398, mc_vqe->execute(q, x)[0], 1e-3);
-
+  std::vector<double> x = {-0.0045228, -0.0271437,   0.0269078,   -0.0318577,
+                           0.0190671,  -0.000120601, -0.00932309, 0.0437225,
+                           0.0138395,  0.0174245,    -0.0429059,  0.0548143,
+                           -0.0347927, -0.00799183,  0.0258266,   -0.0137459};
+  EXPECT_NEAR(-0.14398, mc_vqe->execute(q, x)[0], 1e-3);
 }
 
 TEST(MCVQETester, checkResponse) {
@@ -158,7 +159,7 @@ TEST(MCVQETester, checkResponse) {
                       {"cyclic", false},
                       {"angstrom-to-au", false},
                       {"debye-to-au", false},
-                      {"mc-vqe-gradient", true},
+                      {"nuclear-gradient", true},
                       {"log-level", mcvqeLogLevel},
                       {"tnqvm-log", true},
                       {"entangler", "Ry"},

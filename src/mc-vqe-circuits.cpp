@@ -72,8 +72,7 @@ MC_VQE::statePreparationCircuit(const Eigen::VectorXd &angles) const {
   return cisCircuit;
 }
 
-std::shared_ptr<CompositeInstruction>
-MC_VQE::entanglerCircuit() const {
+std::shared_ptr<CompositeInstruction> MC_VQE::entanglerCircuit() const {
   /** Constructs the entangler part of the circuit
    */
 
@@ -82,10 +81,9 @@ MC_VQE::entanglerCircuit() const {
   auto entanglerCircuit = provider->createComposite("entanglerCircuit");
   int varIdx = 0;
 
- if (entanglerType == "trotterized") {
+  if (entanglerType == "trotterized") {
 
     auto entangler = [&](const std::size_t control, const std::size_t target) {
-
       std::vector<std::shared_ptr<Instruction>> gates;
       std::vector<std::string> varNames;
 
@@ -99,7 +97,8 @@ MC_VQE::entanglerCircuit() const {
       varNames.push_back(varName);
       gates.push_back(ry);
 
-      auto rx2 = provider->createInstruction("U", {control}, {PI / 2.0, 3.0 * PI / 2.0, PI / 2.0});
+      auto rx2 = provider->createInstruction(
+          "U", {control}, {PI / 2.0, 3.0 * PI / 2.0, PI / 2.0});
       gates.push_back(rx2);
 
       auto h = provider->createInstruction("H", {target});
@@ -130,10 +129,12 @@ MC_VQE::entanglerCircuit() const {
       cnot = provider->createInstruction("CNOT", {control, target});
       gates.push_back(cnot);
 
-      auto rx2T = provider->createInstruction("U", {control}, {PI / 2.0, PI / 2.0, 3 * PI / 2.0});
+      auto rx2T = provider->createInstruction(
+          "U", {control}, {PI / 2.0, PI / 2.0, 3 * PI / 2.0});
       gates.push_back(rx2T);
 
-      rx2 = provider->createInstruction("U", {target}, {PI / 2.0, 3.0 * PI / 2.0, PI / 2.0});
+      rx2 = provider->createInstruction("U", {target},
+                                        {PI / 2.0, 3.0 * PI / 2.0, PI / 2.0});
       gates.push_back(rx2);
 
       cnot = provider->createInstruction("CNOT", {control, target});
@@ -164,11 +165,12 @@ MC_VQE::entanglerCircuit() const {
       h = provider->createInstruction("H", {control});
       gates.push_back(h);
 
-      rx2T = provider->createInstruction("U", {target}, {PI / 2.0, PI / 2.0, 3.0 * PI / 2.0});
+      rx2T = provider->createInstruction("U", {target},
+                                         {PI / 2.0, PI / 2.0, 3.0 * PI / 2.0});
       gates.push_back(rx2T);
 
       entanglerCircuit->addVariables(varNames);
-      entanglerCircuit->addInstructions(gates);
+      entanglerCircuit->addInstructions(std::move(gates), false);
     };
 
     // placing the entanglerGates in the circuit
@@ -183,14 +185,12 @@ MC_VQE::entanglerCircuit() const {
     if (isCyclic) {
       std::size_t control = nChromophores - 1, target = 0;
       entangler(control, target);
-    } 
+    }
+  }
 
-  } 
-  
   if (entanglerType == "default") {
 
     auto entangler = [&](const std::size_t control, const std::size_t target) {
-
       std::vector<std::shared_ptr<Instruction>> gates;
       std::vector<std::string> varNames;
       auto cnot = provider->createInstruction("CNOT", {control, target});
@@ -215,12 +215,12 @@ MC_VQE::entanglerCircuit() const {
       varNames.push_back(varName);
 
       varName = "x" + std::to_string(varIdx++);
-      ry = provider->createInstruction("Ry", {control},{varName});
+      ry = provider->createInstruction("Ry", {control}, {varName});
       gates.push_back(ry);
       varNames.push_back(varName);
 
       entanglerCircuit->addVariables(varNames);
-      entanglerCircuit->addInstructions(gates);
+      entanglerCircuit->addInstructions(std::move(gates), false);
     };
 
     // placing the first Ry's in the circuit
@@ -244,7 +244,6 @@ MC_VQE::entanglerCircuit() const {
       std::size_t control = nChromophores - 1, target = 0;
       entangler(control, target);
     }
-
   }
 
   if (entanglerType == "Ry") {

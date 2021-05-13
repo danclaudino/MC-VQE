@@ -15,7 +15,7 @@ namespace algorithm {
 // compute the unrelaxed 1PDM
 // Eq. 104/121
 std::map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getUnrelaxed1PDM(const std::vector<double> &x) {
+MC_VQE::getUnrelaxed1PDM(const std::vector<double> &x) const {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
@@ -54,7 +54,7 @@ MC_VQE::getUnrelaxed1PDM(const std::vector<double> &x) {
 // compute the unrelaxed 2PDM
 // Eq. 105/122
 std::map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getUnrelaxed2PDM(const std::vector<double> &x) {
+MC_VQE::getUnrelaxed2PDM(const std::vector<double> &x) const {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
@@ -110,7 +110,7 @@ MC_VQE::getUnrelaxed2PDM(const std::vector<double> &x) {
 
 // compute the VQE multipliers
 std::vector<Eigen::MatrixXd>
-MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
+MC_VQE::getVQEMultipliers(const std::vector<double> &x) const {
 
   Eigen::MatrixXd rotatedEigenstates = CISEigenstates * subSpaceRotation;
   Eigen::MatrixXd gateAngles = statePreparationAngles(rotatedEigenstates);
@@ -217,7 +217,7 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) {
 // compute CP-SA-VQE 1PDM
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getVQE1PDM(const std::vector<double> &x,
-                   const std::vector<Eigen::MatrixXd> &vqeMultipliers) {
+                   const std::vector<Eigen::MatrixXd> &vqeMultipliers) const {
 
   // Eq. 128
   auto nParams = x.size();
@@ -266,7 +266,7 @@ MC_VQE::getVQE1PDM(const std::vector<double> &x,
 // compute CP-SA-VQE 2PDM
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getVQE2PDM(const std::vector<double> &x,
-                   const std::vector<Eigen::MatrixXd> &vqeMultipliers) {
+                   const std::vector<Eigen::MatrixXd> &vqeMultipliers) const {
 
   // Eq. 128
   auto nParams = x.size();
@@ -334,7 +334,7 @@ MC_VQE::getVQE2PDM(const std::vector<double> &x,
 
 Eigen::MatrixXd
 MC_VQE::getStatePrepationAngleGradient(const Eigen::MatrixXd &gateAngles,
-                                       const std::vector<double> &x) {
+                                       const std::vector<double> &x) const {
 
   Eigen::MatrixXd stateGateAngles = Eigen::VectorXd::Zero(gateAngles.size());
   Eigen::MatrixXd stateAngleGrad = Eigen::VectorXd::Zero(gateAngles.size() - 1);
@@ -400,9 +400,9 @@ MC_VQE::getStatePrepationAngleGradient(const Eigen::MatrixXd &gateAngles,
 }
 
 // compute multipliers w.r.t. contracted reference states
-std::vector<Eigen::MatrixXd>
-MC_VQE::getCRSMultipliers(const std::vector<double> &x,
-                          const std::vector<Eigen::MatrixXd> &vqeMultipliers) {
+std::vector<Eigen::MatrixXd> MC_VQE::getCRSMultipliers(
+    const std::vector<double> &x,
+    const std::vector<Eigen::MatrixXd> &vqeMultipliers) const {
 
   // Jacobian Eq. 62
   auto jacobian = [](int M, int I, Eigen::VectorXd coefficients) {
@@ -545,7 +545,7 @@ MC_VQE::getCRSMultipliers(const std::vector<double> &x,
 // we can have a single call for 1 and 2 PDMs
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getCRSDensityMatrices(
-    const std::vector<Eigen::MatrixXd> &cpCRSMultipliers) {
+    const std::vector<Eigen::MatrixXd> &cpCRSMultipliers) const {
 
   std::map<std::string, std::vector<Eigen::MatrixXd>> crsPDM;
   for (int mcState = 0; mcState < nStates; mcState++) {
@@ -659,7 +659,7 @@ std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getRelaxedDensityMatrices(
     std::map<std::string, std::vector<Eigen::MatrixXd>> &unrelaxedDM,
     std::map<std::string, std::vector<Eigen::MatrixXd>> &vqeDM,
-    std::map<std::string, std::vector<Eigen::MatrixXd>> &crsDM) {
+    std::map<std::string, std::vector<Eigen::MatrixXd>> &crsDM) const {
 
   std::map<std::string, std::vector<Eigen::MatrixXd>> relaxedDM;
 
@@ -678,8 +678,8 @@ MC_VQE::getRelaxedDensityMatrices(
 }
 
 std::map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getMonomerBasisDensityMatrices(
-    std::map<std::string, std::vector<Eigen::MatrixXd>> &_DM) {
+MC_VQE::getDensityMatricesInMonomerBasis(
+    std::map<std::string, std::vector<Eigen::MatrixXd>> &_DM) const {
 
   // the 1PDM is straightforward, so I only do this for the 2PDM
   // here we change from Pauli to monomer basis
@@ -751,8 +751,9 @@ MC_VQE::getMonomerBasisDensityMatrices(
   return monomerBasisDM;
 }
 
-std::map<std::string, std::vector<Eigen::MatrixXd>> MC_VQE::getMonomerGradient(
-    std::map<std::string, std::vector<Eigen::MatrixXd>> &_1PDM) {
+std::map<std::string, std::vector<Eigen::MatrixXd>>
+MC_VQE::getMonomerDensityMatrices(
+    std::map<std::string, std::vector<Eigen::MatrixXd>> &_1PDM) const {
 
   std::map<std::string, std::vector<Eigen::MatrixXd>> monomerGradients;
 
@@ -782,8 +783,8 @@ std::map<std::string, std::vector<Eigen::MatrixXd>> MC_VQE::getMonomerGradient(
 }
 
 std::map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getDimerInteractionGradient(
-    std::map<std::string, std::vector<Eigen::MatrixXd>> &_2PDM) {
+MC_VQE::getDimerInteractionDensityMatrices(
+    std::map<std::string, std::vector<Eigen::MatrixXd>> &_2PDM) const {
 
   // Eq. 147
   auto dipolePartial = [&](const Eigen::Vector3d mu, const Eigen::Vector3d r) {
@@ -944,7 +945,7 @@ MC_VQE::getDimerInteractionGradient(
 // vector<stateGradient>
 // stateGradients = vector<monomerGradient>
 std::vector<std::vector<Eigen::MatrixXd>> MC_VQE::getNuclearGradients(
-    std::map<std::string, std::vector<Eigen::MatrixXd>> &DM) {
+    std::map<std::string, std::vector<Eigen::MatrixXd>> &DM) const {
 
   std::vector<std::vector<Eigen::MatrixXd>> gradients;
 

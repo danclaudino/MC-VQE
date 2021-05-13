@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <Eigen/Dense>
@@ -22,17 +21,12 @@ private:
 
 public:
   Monomer() = default;
-  Monomer(const double groundStateEnergy, const double excitedStateEnergy,
-          const Eigen::Vector3d groundStateDipole,
-          const Eigen::Vector3d excitedStateDipole,
-          const Eigen::Vector3d transitionDipole,
-          const Eigen::Vector3d centerOfMass);
 
   void isDipoleInDebye(const bool);
   void isCenterOfMassInAngstrom(const bool);
-  double getS();
-  double getD();
-  double getE();
+  double getS() const;
+  double getD() const;
+  double getE() const;
 
   // energy
   void setGroundStateEnergy(const double);
@@ -51,20 +45,20 @@ public:
   void setExcitedStateDipoleGradient(const std::vector<Eigen::MatrixXd> &);
   void setTransitionDipoleGradient(const std::vector<Eigen::MatrixXd> &);
 
-  int getNumberOfAtoms();
-  Eigen::MatrixXd getGroundStateEnergyGradient();
-  Eigen::MatrixXd getExcitedStateEnergyGradient();
-  std::vector<Eigen::MatrixXd> getCenterOfMassGradient();
-  std::vector<Eigen::MatrixXd> getGroundStateDipoleGradient();
-  std::vector<Eigen::MatrixXd> getExcitedStateDipoleGradient();
-  std::vector<Eigen::MatrixXd> getTransitionDipoleGradient();
+  int getNumberOfAtoms() const;
+  Eigen::MatrixXd getGroundStateEnergyGradient() const;
+  Eigen::MatrixXd getExcitedStateEnergyGradient() const;
+  std::vector<Eigen::MatrixXd> getCenterOfMassGradient() const;
+  std::vector<Eigen::MatrixXd> getGroundStateDipoleGradient() const;
+  std::vector<Eigen::MatrixXd> getExcitedStateDipoleGradient() const;
+  std::vector<Eigen::MatrixXd> getTransitionDipoleGradient() const;
 
-  Eigen::Vector3d getDipoleSum();
-  Eigen::Vector3d getDipoleDifference();
-  Eigen::Vector3d getGroundStateDipole();
-  Eigen::Vector3d getExcitedStateDipole();
-  Eigen::Vector3d getTransitionDipole();
-  Eigen::Vector3d getCenterOfMass();
+  Eigen::Vector3d getDipoleSum() const;
+  Eigen::Vector3d getDipoleDifference() const;
+  Eigen::Vector3d getGroundStateDipole() const;
+  Eigen::Vector3d getExcitedStateDipole() const;
+  Eigen::Vector3d getTransitionDipole() const;
+  Eigen::Vector3d getCenterOfMass() const;
 
   double getX(Monomer &);
   double getZ(Monomer &);

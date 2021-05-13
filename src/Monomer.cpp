@@ -1,19 +1,5 @@
 #include "Monomer.hpp"
 
-Monomer::Monomer(const double groundStateEnergy,
-                 const double excitedStateEnergy,
-                 const Eigen::Vector3d groundStateDipole,
-                 const Eigen::Vector3d excitedStateDipole,
-                 const Eigen::Vector3d transitionDipole,
-                 const Eigen::Vector3d centerOfMass) {
-  _groundStateEnergy = groundStateEnergy;
-  _excitedStateEnergy = excitedStateEnergy;
-  _groundStateDipole = groundStateDipole;
-  _excitedStateDipole = excitedStateDipole;
-  _transitionDipole = transitionDipole;
-  _centerOfMass = centerOfMass;
-}
-
 double Monomer::twoBodyH(const Eigen::VectorXd &mu_A,
                          const Eigen::VectorXd &mu_B,
                          const Eigen::VectorXd &r_AB) {
@@ -104,52 +90,56 @@ void Monomer::setCenterOfMassGradient(
   _centerOfMassGradient = centerOfMassGradient;
 }
 
-int Monomer::getNumberOfAtoms() {
-  return _nAtoms;
-}
+int Monomer::getNumberOfAtoms() const { return _nAtoms; }
 
-Eigen::MatrixXd Monomer::getGroundStateEnergyGradient() {
+Eigen::MatrixXd Monomer::getGroundStateEnergyGradient() const {
   return _groundStateEnergyGradient;
 }
 
-Eigen::MatrixXd Monomer::getExcitedStateEnergyGradient() {
+Eigen::MatrixXd Monomer::getExcitedStateEnergyGradient() const {
   return _excitedStateEnergyGradient;
 }
 
-std::vector<Eigen::MatrixXd> Monomer::getGroundStateDipoleGradient() {
+std::vector<Eigen::MatrixXd> Monomer::getGroundStateDipoleGradient() const {
   return _groundStateDipoleGradient;
 }
 
-std::vector<Eigen::MatrixXd> Monomer::getExcitedStateDipoleGradient() {
+std::vector<Eigen::MatrixXd> Monomer::getExcitedStateDipoleGradient() const {
   return _excitedStateDipoleGradient;
 }
 
-std::vector<Eigen::MatrixXd> Monomer::getTransitionDipoleGradient() {
+std::vector<Eigen::MatrixXd> Monomer::getTransitionDipoleGradient() const {
   return _transitionDipoleGradient;
 }
 
-std::vector<Eigen::MatrixXd> Monomer::getCenterOfMassGradient() {
+std::vector<Eigen::MatrixXd> Monomer::getCenterOfMassGradient() const {
   return _centerOfMassGradient;
 }
 
-double Monomer::getS() {
+double Monomer::getS() const {
   return 0.5 * (_groundStateEnergy + _excitedStateEnergy);
 }
-double Monomer::getD() {
+double Monomer::getD() const {
   return 0.5 * (_groundStateEnergy - _excitedStateEnergy);
 }
-double Monomer::getE() { return _excitedStateEnergy; }
+double Monomer::getE() const { return _excitedStateEnergy; }
 
-Eigen::Vector3d Monomer::getDipoleSum() {
+Eigen::Vector3d Monomer::getDipoleSum() const {
   return 0.5 * (_groundStateDipole + _excitedStateDipole);
 }
-Eigen::Vector3d Monomer::getDipoleDifference() {
+Eigen::Vector3d Monomer::getDipoleDifference() const {
   return 0.5 * (_groundStateDipole - _excitedStateDipole);
 }
-Eigen::Vector3d Monomer::getGroundStateDipole() { return _groundStateDipole; }
-Eigen::Vector3d Monomer::getExcitedStateDipole() { return _excitedStateDipole; }
-Eigen::Vector3d Monomer::getTransitionDipole() { return _transitionDipole; }
-Eigen::Vector3d Monomer::getCenterOfMass() { return _centerOfMass; }
+Eigen::Vector3d Monomer::getGroundStateDipole() const {
+  return _groundStateDipole;
+}
+Eigen::Vector3d Monomer::getExcitedStateDipole() const {
+  return _excitedStateDipole;
+}
+Eigen::Vector3d Monomer::getTransitionDipole() const {
+  return _transitionDipole;
+}
+Eigen::Vector3d Monomer::getCenterOfMass() const { return _centerOfMass; }
 
 double Monomer::getX(Monomer &B) {
   auto r = _centerOfMass - B.getCenterOfMass();

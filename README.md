@@ -37,7 +37,7 @@ The following can be added to the command line to control the execution:
 * `--opt-maxiter`: maximum number of optimization iterations (defaults to 1)
 * `--n-states`: number of states to consider in the MC-VQE optimization. Needs to be less or equal than the number of chromophores (defaults to 1)
 * `--n-cycles`: number of times the application is executed to probe performance (defaults to 1)
-* `--accelerator`: name of the accelerator (defaults to `tnqvm` using the `exatn` visitor)
+* `--accelerator-name`: name of the accelerator {`tnqvm`,`qpp`,`aer`} (defaults to `tnqvm`)
 * `--energy-data-path`: string with the path to the data file for MC-VQE energy spectrum simulation (defaults to `{CMAKE_SOURCE_DIR}/examples/n-chromophores_qubit_datafile.txt` where the file selected depends on the number of chromophores)
 * `--response-data-path`: string with the path to the data file for MC-VQE nuclear gradient simulation (defaults to `{CMAKE_SOURCE_DIR}/examples/2_qubit_datafile.txt`, so only data for 2 qubits is provided by default)
 * `--double-depth`: compute expectation values via conjugate tensor network,  double-depth circuit (defaults to `false`)

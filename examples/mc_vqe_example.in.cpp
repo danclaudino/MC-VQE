@@ -7,31 +7,44 @@
 int main(int argc, char **argv) {
   xacc::Initialize(argc, argv);
 
-  std::vector<std::string> arguments(argv + 1, argv + argc);
+  //std::vector<std::string> arguments(argv + 1, argv + argc);
+  std::vector<std::string> arguments(argc);
+  for(int i = 1; i < argc; ++i) arguments[i] = std::string(argv[i]);
+
   int n_virt_qpus = 1, exatnLogLevel = 0, mcvqeLogLevel = 0, n_chromophores = 4,
       exatnBufferSize = 4, opt_maxiter = 1, n_states = 1, n_cycles = 1,
-      max_qubit = 8;
+      max_qubit = 18;
   std::string acc = "tnqvm", energy_data_path, response_data_path;
   bool double_depth = false, print_tnqvm_log = false, debye2au = true,
        angstrom2au = false, cyclic = true, doInterference = true,
        doGradient = false;
 
-  for (int i = 0; i < arguments.size(); i++) {
+  for (int i = 0; i < arguments.size(); ++i) {
+    //std::cout << "#DEBUG: New command line argument: " << arguments[i] << std::endl; //debug
+
     if (arguments[i] == "--n-chromophores") {
       n_chromophores = std::stoi(arguments[i + 1]);
+      std::cout << "Number of chromophores reset to " << n_chromophores << std::endl;
     }
+
     if (arguments[i] == "--n-virtual-qpus") {
       n_virt_qpus = std::stoi(arguments[i + 1]);
+      std::cout << "Number of virtual QPUs reset to " << n_virt_qpus << std::endl;
     }
+
     if (arguments[i] == "--exatn-log-level") {
       exatnLogLevel = std::stoi(arguments[i + 1]);
+      std::cout << "ExaTN log level reset to " << exatnLogLevel << std::endl;
     }
+
     if (arguments[i] == "--mcvqe-log-level") {
       mcvqeLogLevel = std::stoi(arguments[i + 1]);
+      std::cout << "MC-VQE log level reset to " << mcvqeLogLevel << std::endl;
     }
+
     if (arguments[i] == "--print-tnqvm-log") {
-      if (arguments[i + 1] == "true" || arguments[i + 1] == "1")
-        print_tnqvm_log = true;
+      if (arguments[i + 1] == "true" || arguments[i + 1] == "1") print_tnqvm_log = true;
+      std::cout << "TN-QVM log printing reset to " << print_tnqvm_log << std::endl;
     }
 
     if (arguments[i] == "--cyclic") {
@@ -40,6 +53,7 @@ int main(int argc, char **argv) {
       } else {
         cyclic = false;
       }
+      std::cout << "Calculating a cyclic system of monomers = " << cyclic << std::endl;
     }
 
     if (arguments[i] == "--angstrom-to-au") {
@@ -76,36 +90,49 @@ int main(int argc, char **argv) {
 
     if (arguments[i] == "--exatn-buffer-size") {
       exatnBufferSize = std::stoi(arguments[i + 1]);
+      std::cout << "ExaTN buffer size reset to " << exatnBufferSize << std::endl;
     }
+
     if (arguments[i] == "--opt-maxiter") {
       opt_maxiter = std::stoi(arguments[i + 1]);
+      std::cout << "Max number of optimization iterations reset to " << opt_maxiter << std::endl;
     }
+
     if (arguments[i] == "--n-states") {
       n_states = std::stoi(arguments[i + 1]);
+      std::cout << "Number of states reset to " << n_states << std::endl;
     }
+
     if (arguments[i] == "--n-cycles") {
       n_cycles = std::stoi(arguments[i + 1]);
+      std::cout << "Number of repeat cycles reset to " << n_cycles << std::endl;
     }
-    if (arguments[i] == "--accelerator") {
+
+    if (arguments[i] == "--accelerator-name") {
       acc = arguments[i + 1];
+      std::cout << "Accelerator reset to " << acc << std::endl;
     }
+
     if (arguments[i] == "--energy-data-path") {
       energy_data_path = arguments[i + 1];
     }
+
     if (arguments[i] == "--response-data-path") {
       response_data_path = arguments[i + 1];
     }
+
     if (arguments[i] == "--double-depth") {
-      if (arguments[i + 1] == "true")
-        double_depth = true;
+      if (arguments[i + 1] == "true" || arguments[i + 1] == "1") double_depth = true;
+      std::cout << "Direct TN-QVM expectation value evaluation via conjugate reset to " << double_depth << std::endl;
     }
+
     if (arguments[i] == "--max-qubit") {
       max_qubit = std::stoi(arguments[i + 1]);
+      std::cout << "Max number of qubits after which TN-QVM activates direct algorithm reset to " << max_qubit << std::endl;
     }
   }
 
-  if (!print_tnqvm_log)
-    xacc::logToFile(true);
+  if (!print_tnqvm_log) xacc::logToFile(true);
   xacc::setLoggingLevel(exatnLogLevel);
 
   if (energy_data_path.empty()) {
@@ -122,12 +149,12 @@ int main(int argc, char **argv) {
     response_data_path = "@CMAKE_SOURCE_DIR@/examples/2_qubit_datafile_response.txt";
   }
 
-  auto optimizer =
-      xacc::getOptimizer("nlopt", {{"nlopt-maxeval", opt_maxiter}});
+  auto optimizer = xacc::getOptimizer("nlopt", {{"nlopt-maxeval", opt_maxiter}});
 
   // ExaTN visitor
   std::shared_ptr<xacc::Accelerator> accelerator;
   xacc::HeterogeneousMap hetMap;
+  std::cout << "#DEBUG: Accelerator name = " << acc << std::endl; //debug
   if (acc == "tnqvm") {
     hetMap.insert("tnqvm-visitor", "exatn");
     hetMap.insert("exatn-buffer-size-gb", exatnBufferSize);
@@ -179,7 +206,6 @@ int main(int argc, char **argv) {
     }
   }
 
-  ///
   xacc::Finalize();
 
   return 0;

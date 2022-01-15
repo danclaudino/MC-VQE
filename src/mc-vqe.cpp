@@ -115,10 +115,10 @@ bool MC_VQE::initialize(const HeterogeneousMap &parameters) {
   import->setEnergyDataPath(energyFilePath);
 
   // this is for the gradients
-  if (parameters.stringExists("response-data-path")) {
+  /*if (parameters.stringExists("response-data-path")) {
     responseFilePath = parameters.getString("response-data-path");
     import->setResponseDataPath(responseFilePath);
-  }
+  }*/
 
   // get monomer data
   monomers = import->getMonomers(nChromophores);

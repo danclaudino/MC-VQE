@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
 
   int n_virt_qpus = 1, exatnLogLevel = 0, mcvqeLogLevel = 0, n_chromophores = 4,
       exatnBufferSize = 4, opt_maxiter = 1, n_states = 1, n_cycles = 1,
-      max_qubit = 18;
+      max_qubit = 24;
   std::string acc = "tnqvm", energy_data_path, response_data_path;
   bool double_depth = false, print_tnqvm_log = false, debye2au = true,
        angstrom2au = false, cyclic = true, doInterference = true,

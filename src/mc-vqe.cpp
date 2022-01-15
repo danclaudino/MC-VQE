@@ -211,6 +211,8 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
           if (state == 0) {
             buffer->addExtraInfo("circuit-depth", ExtraInfo(kernel->depth()));
             buffer->addExtraInfo("n-gates", ExtraInfo(kernel->nInstructions()));
+            std::cout << "Total number of gates = " << kernel->nInstructions()
+                      << "; Circuit depth = " << kernel->depth() << std::endl << std::flush;
           }
 
           // Call VQE objective function

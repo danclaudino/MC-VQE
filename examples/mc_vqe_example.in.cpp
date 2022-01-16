@@ -13,8 +13,10 @@ int main(int argc, char **argv) {
 
   int n_virt_qpus = 1, exatnLogLevel = 0, mcvqeLogLevel = 0, n_chromophores = 4,
       exatnBufferSize = 4, opt_maxiter = 1, n_states = 1, n_cycles = 1,
-      max_qubit = 24;
-  std::string acc = "tnqvm", vis = "exatn", energy_data_path, response_data_path;
+      max_qubit = 24, max_bond_dim = 16, max_layers = 4;
+  double rec_tol = 1e-4;
+  std::string acc = "tnqvm", vis = "exatn", vis_bld = "MPS";
+  std::string energy_data_path, response_data_path;
   bool double_depth = false, print_tnqvm_log = false, debye2au = true,
        angstrom2au = false, cyclic = true, doInterference = true,
        doGradient = false;
@@ -118,6 +120,21 @@ int main(int argc, char **argv) {
       std::cout << "TN-QVM visitor reset to " << vis << std::endl;
     }
 
+    if (arguments[i] == "--visitor-builder") {
+      vis_bld = arguments[i + 1];
+      std::cout << "TN-QVM visitor builder reset to " << vis_bld << std::endl;
+    }
+
+    if (arguments[i] == "--visitor-max-bond") {
+      max_bond_dim = std::stoi(arguments[i + 1]);
+      std::cout << "TN-QVM visitor max bond dimension reset to " << max_bond_dim << std::endl;
+    }
+
+    if (arguments[i] == "--visitor-max-layers") {
+      max_layers = std::stoi(arguments[i + 1]);
+      std::cout << "TN-QVM visitor max layers before reconstruction reset to " << max_layers << std::endl;
+    }
+
     if (arguments[i] == "--energy-data-path") {
       energy_data_path = arguments[i + 1];
     }
@@ -171,9 +188,10 @@ int main(int argc, char **argv) {
     hetMap.insert("exp-val-by-conjugate", double_depth);
     hetMap.insert("max-qubit", max_qubit);
     if(vis == "exatn-gen") {
-      hetMap.insert("reconstruct-layers", 4);
-      hetMap.insert("reconstruct-tolerance", 1e-4);
-      hetMap.insert("max-bond-dim", 4);
+      hetMap.insert("reconstruct-builder", vis_bld);
+      hetMap.insert("max-bond-dim", max_bond_dim);
+      hetMap.insert("reconstruct-layers", max_layers);
+      hetMap.insert("reconstruct-tolerance", rec_tol);
       //hetMap.insert("bitstring", bitstring);
     }
     accelerator = xacc::getAccelerator("tnqvm", hetMap);

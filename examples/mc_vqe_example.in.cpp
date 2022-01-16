@@ -14,7 +14,7 @@ int main(int argc, char **argv) {
   int n_virt_qpus = 1, exatnLogLevel = 0, mcvqeLogLevel = 0, n_chromophores = 4,
       exatnBufferSize = 4, opt_maxiter = 1, n_states = 1, n_cycles = 1,
       max_qubit = 24;
-  std::string acc = "tnqvm", energy_data_path, response_data_path;
+  std::string acc = "tnqvm", vis = "exatn", energy_data_path, response_data_path;
   bool double_depth = false, print_tnqvm_log = false, debye2au = true,
        angstrom2au = false, cyclic = true, doInterference = true,
        doGradient = false;
@@ -113,6 +113,11 @@ int main(int argc, char **argv) {
       std::cout << "Accelerator reset to " << acc << std::endl;
     }
 
+    if (arguments[i] == "--visitor-name") {
+      vis = arguments[i + 1];
+      std::cout << "TN-QVM visitor reset to " << vis << std::endl;
+    }
+
     if (arguments[i] == "--energy-data-path") {
       energy_data_path = arguments[i + 1];
     }
@@ -123,12 +128,13 @@ int main(int argc, char **argv) {
 
     if (arguments[i] == "--double-depth") {
       if (arguments[i + 1] == "true" || arguments[i + 1] == "1") double_depth = true;
-      std::cout << "Direct TN-QVM expectation value evaluation via conjugate reset to " << double_depth << std::endl;
+      std::cout << "Direct TN-QVM expectation value via conjugate closure reset to " << double_depth << std::endl;
     }
 
     if (arguments[i] == "--max-qubit") {
       max_qubit = std::stoi(arguments[i + 1]);
-      std::cout << "Max number of qubits after which TN-QVM activates direct algorithm reset to " << max_qubit << std::endl;
+      std::cout << "Number of qubits to activate TN-QVM's direct via-conjugate-closure algorithm reset to "
+                << max_qubit << std::endl;
     }
   }
 
@@ -151,15 +157,25 @@ int main(int argc, char **argv) {
 
   auto optimizer = xacc::getOptimizer("nlopt", {{"nlopt-maxeval", opt_maxiter}});
 
-  // ExaTN visitor
+  // Set up Accelerator
+  if(acc == "tnqvm") {
+    std::cout << "Accelerator = " << acc << "; Visitor = " << vis << std::endl;
+  }else{
+    std::cout << "Accelerator = " << acc << std::endl;
+  }
   std::shared_ptr<xacc::Accelerator> accelerator;
   xacc::HeterogeneousMap hetMap;
-  std::cout << "#DEBUG: Accelerator name = " << acc << std::endl; //debug
   if (acc == "tnqvm") {
-    hetMap.insert("tnqvm-visitor", "exatn");
+    hetMap.insert("tnqvm-visitor", vis);
     hetMap.insert("exatn-buffer-size-gb", exatnBufferSize);
     hetMap.insert("exp-val-by-conjugate", double_depth);
     hetMap.insert("max-qubit", max_qubit);
+    if(vis == "exatn-gen") {
+      hetMap.insert("reconstruct-layers", 4);
+      hetMap.insert("reconstruct-tolerance", 1e-4);
+      hetMap.insert("max-bond-dim", 4);
+      //hetMap.insert("bitstring", bitstring);
+    }
     accelerator = xacc::getAccelerator("tnqvm", hetMap);
   } else if (acc == "qpp") {
     accelerator = xacc::getAccelerator("qpp");

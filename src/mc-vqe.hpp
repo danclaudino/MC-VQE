@@ -48,25 +48,33 @@ private:
   // prints messages for given log level
   void logControl(const std::string message, const int level) const;
 
+  // gets unrelaxed (Pauli) 1-body density matrix
   std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getUnrelaxed1PDM(const std::vector<double> &x);
+  getUnrelaxed1PDM(const std::vector<double> &x) const;
 
+  // gets unrelaxed (Pauli) 2-body density matrix
   std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getUnrelaxed2PDM(const std::vector<double> &x);
+  getUnrelaxed2PDM(const std::vector<double> &x) const;
 
   // calls the VQE objective function
   double vqeWrapper(const std::shared_ptr<Observable> observable,
                     const std::shared_ptr<CompositeInstruction> kernel,
                     const std::vector<double> &x) const;
 
+  // gets 1-body density matrix wrt VQE parameters
   std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getVQE1PDM(const std::vector<double> &, const std::vector<Eigen::MatrixXd> &);
+  getVQE1PDM(const std::vector<double> &,
+             const std::vector<Eigen::MatrixXd> &) const;
 
+  // gets 2-body density matrix wrt VQE parameters
   std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getVQE2PDM(const std::vector<double> &, const std::vector<Eigen::MatrixXd> &);
+  getVQE2PDM(const std::vector<double> &,
+             const std::vector<Eigen::MatrixXd> &) const;
 
-  Eigen::MatrixXd getStatePrepationAngleGradient(const Eigen::MatrixXd &,
-                                                 const std::vector<double> &);
+  // gets gradient of state energy wrt to state prep. angles
+  Eigen::MatrixXd
+  getStatePrepationAngleGradient(const Eigen::MatrixXd &,
+                                 const std::vector<double> &) const;
   // implemented entanglers
   const std::vector<std::string> entanglers = {"default", "trotterized", "Ry"};
 
@@ -112,7 +120,7 @@ protected:
   // mc-vqe log file
   mutable std::ofstream logFile;
   // valid chromophore pairs (nearest neighbor)
-  std::map<int, std::vector<int>> pairs;
+  mutable std::map<int, std::vector<int>> pairs;
   // pi
   const double PI = xacc::constants::pi;
 
@@ -124,7 +132,7 @@ protected:
   // MC-VQE methods
 
   // stores valid pairs of chromophores
-  void setPairs();
+  void setPairs() const;
   // compute CIS
   void computeCIS();
   // compute AIEM Hamiltonian
@@ -146,49 +154,60 @@ protected:
 
   // response/gradient
   std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getUnrelaxedDensityMatrices(const std::vector<double> &x) {
+  getUnrelaxedDensityMatrices(const std::vector<double> &x) const {
     auto monomerDM = getUnrelaxed1PDM(x);
     auto dimerDM = getUnrelaxed2PDM(x);
     monomerDM.insert(dimerDM.begin(), dimerDM.end());
     return monomerDM;
   };
 
-  std::vector<Eigen::MatrixXd> getVQEMultipliers(const std::vector<double> &);
+  // gets VQE Lagrange multiplies
+  std::vector<Eigen::MatrixXd>
+  getVQEMultipliers(const std::vector<double> &) const;
 
+  // gets VQE DMs
   std::map<std::string, std::vector<Eigen::MatrixXd>>
   getVQEDensityMatrices(const std::vector<double> &x,
-                        std::vector<Eigen::MatrixXd> &multipliers) {
+                        std::vector<Eigen::MatrixXd> &multipliers) const {
     auto monomerDM = getVQE1PDM(x, multipliers);
     auto dimerDM = getVQE2PDM(x, multipliers);
     monomerDM.insert(dimerDM.begin(), dimerDM.end());
     return monomerDM;
   };
 
+  // gets the Lagrange multiplies wrt to CIS-
   std::vector<Eigen::MatrixXd>
   getCRSMultipliers(const std::vector<double> &,
-                    const std::vector<Eigen::MatrixXd> &);
+                    const std::vector<Eigen::MatrixXd> &) const;
 
+  // gets DMs wrt to CIS
   std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getCRSDensityMatrices(const std::vector<Eigen::MatrixXd> &);
+  getCRSDensityMatrices(std::vector<Eigen::MatrixXd> &) const;
 
+  // gets the relaxed density matrices
   std::map<std::string, std::vector<Eigen::MatrixXd>> getRelaxedDensityMatrices(
       std::map<std::string, std::vector<Eigen::MatrixXd>> &,
       std::map<std::string, std::vector<Eigen::MatrixXd>> &,
-      std::map<std::string, std::vector<Eigen::MatrixXd>> &);
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &) const;
 
+
+  // gets DMs in the monomer basis
   std::map<std::string, std::vector<Eigen::MatrixXd>>
   getMonomerBasisDensityMatrices(
-      std::map<std::string, std::vector<Eigen::MatrixXd>> &);
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &) const;
 
-  std::map<std::string, std::vector<Eigen::MatrixXd>>
-  getMonomerGradient(std::map<std::string, std::vector<Eigen::MatrixXd>> &);
+  // gets 1-body gradient contribution
+  std::map<std::string, std::vector<Eigen::MatrixXd>> getMonomerGradient(
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &) const;
 
+  // gets 2-body gradient contribution
   std::map<std::string, std::vector<Eigen::MatrixXd>>
   getDimerInteractionGradient(
-      std::map<std::string, std::vector<Eigen::MatrixXd>> &);
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &) const;
 
-  std::vector<std::vector<Eigen::MatrixXd>>
-  getNuclearGradients(std::map<std::string, std::vector<Eigen::MatrixXd>> &);
+  // gets gradient wrt nuclear displacement
+  std::vector<std::vector<Eigen::MatrixXd>> getNuclearGradients(
+      std::map<std::string, std::vector<Eigen::MatrixXd>> &) const;
 
 public:
   bool initialize(const HeterogeneousMap &parameters) override;

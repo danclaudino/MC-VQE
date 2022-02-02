@@ -322,17 +322,18 @@ void MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer) const {
   auto result = optimizer->optimize(f);
   logControl("MC-VQE optimization complete [" + std::to_string(timer()) + " s]",
              1);
+  // x for the optimized entangler parameters
+  auto x = result.second;
 
   buffer->addExtraInfo("opt-average-energy", ExtraInfo(result.first));
   buffer->addExtraInfo("circuit-depth", ExtraInfo(depth));
   buffer->addExtraInfo("n-gates", ExtraInfo(nGates));
-  buffer->addExtraInfo("opt-params", ExtraInfo(result.second));
+  buffer->addExtraInfo("opt-params", ExtraInfo(x));
 
   if (doInterference) {
     // now construct interference states and observe Hamiltonian
-    auto optimizedEntangler = result.second;
     logControl("Computing Hamiltonian in the interference state basis", 1);
-    computeSubspaceHamiltonian(entangledHamiltonian, result.second);
+    computeSubspaceHamiltonian(entangledHamiltonian, x);
     logControl("Computed interference basis Hamiltonian matrix elements [" +
                    std::to_string(timer()) + " s]",
                1);
@@ -599,7 +600,7 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
   }
 }
 
-void MC_VQE::setPairs() {
+void MC_VQE::setPairs() const {
   // stores the indices of the valid chromophore pairs
   // assuming the chromophores can only be in a
   // cyclic or linear arrangement

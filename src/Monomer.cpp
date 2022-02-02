@@ -16,8 +16,8 @@ Monomer::Monomer(const double groundStateEnergy,
 
 double Monomer::twoBodyH(const Eigen::VectorXd &mu_A,
                          const Eigen::VectorXd &mu_B,
-                         const Eigen::VectorXd &r_AB) {
-  /** Lambda function to compute the two-body AIEM Hamiltonian matrix elements
+                         const Eigen::VectorXd &r_AB) const {
+  /** Compute the two-body AIEM Hamiltonian matrix elements
    * @param[in] mu_A Some dipole moment vector (gs/es/t) from chromophore A
    * @param[in] mu_B Some dipole moment vector (gs/es/t) from chromophore B
    * @param[in] r_AB Vector between A and B
@@ -104,84 +104,88 @@ void Monomer::setCenterOfMassGradient(
   _centerOfMassGradient = centerOfMassGradient;
 }
 
-int Monomer::getNumberOfAtoms() {
-  return _nAtoms;
-}
+int Monomer::getNumberOfAtoms() const { return _nAtoms; }
 
-Eigen::MatrixXd Monomer::getGroundStateEnergyGradient() {
+Eigen::MatrixXd Monomer::getGroundStateEnergyGradient() const {
   return _groundStateEnergyGradient;
 }
 
-Eigen::MatrixXd Monomer::getExcitedStateEnergyGradient() {
+Eigen::MatrixXd Monomer::getExcitedStateEnergyGradient() const {
   return _excitedStateEnergyGradient;
 }
 
-std::vector<Eigen::MatrixXd> Monomer::getGroundStateDipoleGradient() {
+std::vector<Eigen::MatrixXd> Monomer::getGroundStateDipoleGradient() const {
   return _groundStateDipoleGradient;
 }
 
-std::vector<Eigen::MatrixXd> Monomer::getExcitedStateDipoleGradient() {
+std::vector<Eigen::MatrixXd> Monomer::getExcitedStateDipoleGradient() const {
   return _excitedStateDipoleGradient;
 }
 
-std::vector<Eigen::MatrixXd> Monomer::getTransitionDipoleGradient() {
+std::vector<Eigen::MatrixXd> Monomer::getTransitionDipoleGradient() const {
   return _transitionDipoleGradient;
 }
 
-std::vector<Eigen::MatrixXd> Monomer::getCenterOfMassGradient() {
+std::vector<Eigen::MatrixXd> Monomer::getCenterOfMassGradient() const {
   return _centerOfMassGradient;
 }
 
-double Monomer::getS() {
+double Monomer::getS() const {
   return 0.5 * (_groundStateEnergy + _excitedStateEnergy);
 }
-double Monomer::getD() {
+double Monomer::getD() const {
   return 0.5 * (_groundStateEnergy - _excitedStateEnergy);
 }
-double Monomer::getE() { return _excitedStateEnergy; }
+double Monomer::getE() const { return _excitedStateEnergy; }
 
-Eigen::Vector3d Monomer::getDipoleSum() {
+Eigen::Vector3d Monomer::getDipoleSum() const {
   return 0.5 * (_groundStateDipole + _excitedStateDipole);
 }
-Eigen::Vector3d Monomer::getDipoleDifference() {
+Eigen::Vector3d Monomer::getDipoleDifference() const {
   return 0.5 * (_groundStateDipole - _excitedStateDipole);
 }
-Eigen::Vector3d Monomer::getGroundStateDipole() { return _groundStateDipole; }
-Eigen::Vector3d Monomer::getExcitedStateDipole() { return _excitedStateDipole; }
-Eigen::Vector3d Monomer::getTransitionDipole() { return _transitionDipole; }
-Eigen::Vector3d Monomer::getCenterOfMass() { return _centerOfMass; }
+Eigen::Vector3d Monomer::getGroundStateDipole() const {
+  return _groundStateDipole;
+}
+Eigen::Vector3d Monomer::getExcitedStateDipole() const {
+  return _excitedStateDipole;
+}
+Eigen::Vector3d Monomer::getTransitionDipole() const {
+  return _transitionDipole;
+}
+Eigen::Vector3d Monomer::getCenterOfMass() const { return _centerOfMass; }
 
-double Monomer::getX(Monomer &B) {
+double Monomer::getX(const Monomer &B) const {
   auto r = _centerOfMass - B.getCenterOfMass();
   return 0.5 * (twoBodyH(_transitionDipole, B.getDipoleSum(), r) +
                 twoBodyH(B.getDipoleSum(), _transitionDipole, r));
 }
 
-double Monomer::getZ(Monomer &B) {
+double Monomer::getZ(const Monomer &B) const {
   auto r = _centerOfMass - B.getCenterOfMass();
   return 0.5 * (twoBodyH(getDipoleDifference(), B.getDipoleSum(), r) +
                 twoBodyH(B.getDipoleSum(), getDipoleDifference(), r));
 }
 
-double Monomer::getXX(Monomer &B) {
+double Monomer::getXX(const Monomer &B) const {
   auto r = _centerOfMass - B.getCenterOfMass();
   return 0.25 * (twoBodyH(_transitionDipole, B.getTransitionDipole(), r) +
                  twoBodyH(B.getTransitionDipole(), _transitionDipole, r));
 }
 
-double Monomer::getXZ(Monomer &B) {
+double Monomer::getXZ(const Monomer &B) const {
   auto r = _centerOfMass - B.getCenterOfMass();
   return 0.25 * (twoBodyH(_transitionDipole, B.getDipoleDifference(), r) +
                  twoBodyH(B.getDipoleDifference(), _transitionDipole, r));
 }
 
-double Monomer::getZX(Monomer &B) {
+double Monomer::getZX(const Monomer &B) const {
   auto r = _centerOfMass - B.getCenterOfMass();
   return 0.25 * (twoBodyH(getDipoleDifference(), B.getTransitionDipole(), r) +
                  twoBodyH(B.getTransitionDipole(), getDipoleDifference(), r));
 }
 
-double Monomer::getZZ(Monomer &B) {
+double Monomer::getZZ(const Monomer &B) const {
   auto r = _centerOfMass - B.getCenterOfMass();
   return 0.25 * (twoBodyH(getDipoleDifference(), B.getDipoleDifference(), r) +
                  twoBodyH(B.getDipoleDifference(), getDipoleDifference(), r));

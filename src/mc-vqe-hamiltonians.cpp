@@ -14,6 +14,10 @@ using namespace xacc::quantum;
 namespace xacc {
 namespace algorithm {
 
+/**
+ * @brief Compute CIS Hamiltonian and diagonalize it
+ *
+ */
 void MC_VQE::computeCIS() {
 
   // CIS matrix elements in the nChromophore two-state basis
@@ -70,6 +74,10 @@ void MC_VQE::computeCIS() {
   return;
 }
 
+/**
+ * @brief Compute the AIEM Hamiltonian and make a shared_ptr for it
+ *
+ */
 void MC_VQE::computeAIEMHamiltonian() {
 
   // Compute the AIEM Hamiltonian
@@ -106,6 +114,14 @@ void MC_VQE::computeAIEMHamiltonian() {
   return;
 }
 
+/**
+ * @brief Compute the off-diagonal elements of the Hamiltonian in the
+ * inteference basis
+ *
+ * @param entangledHamiltonian Entangled Hamiltonian matrix with diagonal
+ * elements, i.e., MC state energies
+ * @param x optimal entangler parameters
+ */
 void MC_VQE::computeSubspaceHamiltonian(Eigen::MatrixXd &entangledHamiltonian,
                                         const std::vector<double> &x) const {
 
@@ -161,6 +177,12 @@ void MC_VQE::computeSubspaceHamiltonian(Eigen::MatrixXd &entangledHamiltonian,
   return;
 }
 
+/**
+ * @brief Return state preparation angles from coefficient matrix
+ *
+ * @param coefficientMatrix Coefficient matrix
+ * @return State preparation angle matrix
+ */
 Eigen::MatrixXd
 MC_VQE::statePreparationAngles(const Eigen::MatrixXd &coefficientMatrix) const {
 

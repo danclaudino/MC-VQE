@@ -13,11 +13,14 @@ using namespace xacc::quantum;
 namespace xacc {
 namespace algorithm {
 
+/**
+ * @brief Return shared_ptr to CIS state preparation circuit
+ * 
+ * @param angles State preparation angles
+ * @return CIS state preparation circuit 
+ */
 std::shared_ptr<CompositeInstruction>
 MC_VQE::statePreparationCircuit(const Eigen::VectorXd &angles) const {
-  /** Constructs the circuit that prepares a CIS state
-   * @param[in] angles Angles to parameterize CIS state
-   */
 
   // Provider to create IR for CompositeInstruction, aka circuit
   auto provider = xacc::getIRProvider("quantum");
@@ -72,11 +75,14 @@ MC_VQE::statePreparationCircuit(const Eigen::VectorXd &angles) const {
   return cisCircuit;
 }
 
+/**
+ * @brief Return shared_ptr to entangler
+ * 
+ * @return Entangler
+ */
 std::shared_ptr<CompositeInstruction>
 MC_VQE::entanglerCircuit() const {
-  /** Constructs the entangler part of the circuit
-   */
-
+  
   // Create CompositeInstruction for entangler
   auto provider = xacc::getIRProvider("quantum");
   auto entanglerCircuit = provider->createComposite("entanglerCircuit");

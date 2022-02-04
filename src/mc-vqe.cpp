@@ -600,40 +600,45 @@ MC_VQE::execute(const std::shared_ptr<AcceleratorBuffer> buffer,
   }
 }
 
+/**
+ * @brief Maps each monomer to its neighboring units. Can only be used for
+ * cyclic or linear arrangements, i.e., does not support all-to-all
+ * connectivity.
+ *
+ */
 void MC_VQE::setPairs() const {
-  // stores the indices of the valid chromophore pairs
-  // assuming the chromophores can only be in a
-  // cyclic or linear arrangement
 
-  if (isCyclic) {
-    for (int A = 0; A < nChromophores; A++) {
-      if (A == 0) {
-        pairs[A] = {A + 1, nChromophores - 1};
-      } else if (A == nChromophores - 1) {
-        pairs[A] = {A - 1, 0};
-      } else {
-        pairs[A] = {A - 1, A + 1};
+  for (int A = 0; A < nChromophores; A++) {
+
+    if (A == 0) {
+
+      pairs[A] = {A + 1};
+      if (isCyclic) {
+        pairs[A].insert(pairs[A].begin(), nChromophores - 1);
       }
-    }
-  } else {
-    for (int A = 0; A < nChromophores; A++) {
-      if (A == 0) {
-        pairs[A] = {A + 1};
-      } else if (A == nChromophores - 1) {
-        pairs[A] = {A - 1};
-      } else {
-        pairs[A] = {A - 1, A + 1};
+
+    } else if (A == nChromophores - 1) {
+
+      pairs[A] = {A - 1};
+      if (isCyclic) {
+        pairs[A].push_back(0);
       }
+
+    } else {
+      pairs[A] = {A - 1, A + 1};
     }
+
   }
   return;
 }
 
+/**
+ * @brief Control the level of printing
+ * 
+ * @param message What is to be printed
+ * @param level Message is printed if logLevel is above level
+ */
 void MC_VQE::logControl(const std::string message, const int level) const {
-  /** Function that controls the level of printing
-   * @param[in] message This is what is to be printed
-   * @param[in] level message is printed if level is above logLevel
-   */
 
   if (logLevel >= level) {
     xacc::set_verbose(true);
@@ -645,6 +650,14 @@ void MC_VQE::logControl(const std::string message, const int level) const {
 }
 
 // This is just a wrapper to compute <H^n> with VQE::execute(q, {})
+/**
+ * @brief Return <P(x)>, i.e., the expectation value of P for angles x using a wrapper to VQE.
+ * 
+ * @param observable Observable of which to compute the expectation value
+ * @param kernel Circuit to observe observable
+ * @param x Optimal entangler parameters
+ * @return Expectation value of observable for circuit with entangler parameterized bvy x  
+ */
 double MC_VQE::vqeWrapper(const std::shared_ptr<Observable> observable,
                           const std::shared_ptr<CompositeInstruction> kernel,
                           const std::vector<double> &x) const {
@@ -656,6 +669,11 @@ double MC_VQE::vqeWrapper(const std::shared_ptr<Observable> observable,
   return vqe->execute(q, x)[0];
 }
 
+/**
+ * @brief Return time elapsed from beginning of MC-VQE run
+ * 
+ * @return Time elapsed
+ */
 double MC_VQE::timer() const {
 
   auto now = std::chrono::high_resolution_clock::now();

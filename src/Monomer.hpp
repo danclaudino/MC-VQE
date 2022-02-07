@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <Eigen/Dense>
@@ -17,10 +18,15 @@ private:
       _centerOfMassGradient;
 
   double twoBodyH(const Eigen::VectorXd &mu_A, const Eigen::VectorXd &mu_B,
-                  const Eigen::VectorXd &r_AB);
+                  const Eigen::VectorXd &r_AB) const;
 
 public:
   Monomer() = default;
+  Monomer(const double groundStateEnergy, const double excitedStateEnergy,
+          const Eigen::Vector3d groundStateDipole,
+          const Eigen::Vector3d excitedStateDipole,
+          const Eigen::Vector3d transitionDipole,
+          const Eigen::Vector3d centerOfMass);
 
   void isDipoleInDebye(const bool);
   void isCenterOfMassInAngstrom(const bool);
@@ -60,10 +66,10 @@ public:
   Eigen::Vector3d getTransitionDipole() const;
   Eigen::Vector3d getCenterOfMass() const;
 
-  double getX(Monomer &);
-  double getZ(Monomer &);
-  double getXX(Monomer &);
-  double getXZ(Monomer &);
-  double getZX(Monomer &);
-  double getZZ(Monomer &);
+  double getX(const Monomer &) const;
+  double getZ(const Monomer &) const;
+  double getXX(const Monomer &) const;
+  double getXZ(const Monomer &) const;
+  double getZX(const Monomer &) const;
+  double getZZ(const Monomer &) const;
 };

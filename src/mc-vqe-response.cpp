@@ -12,8 +12,13 @@ using namespace xacc::quantum;
 namespace xacc {
 namespace algorithm {
 
-// compute the unrelaxed 1PDM
 // Eq. 104/121
+/**
+ * @brief Return the 1-body unrelaxed (Pauli) density matrices
+ * 
+ * @param x optimal entangler parameters
+ * @return Unrelaxed 1-body density matrices
+ */
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getUnrelaxed1PDM(const std::vector<double> &x) const {
 
@@ -51,8 +56,13 @@ MC_VQE::getUnrelaxed1PDM(const std::vector<double> &x) const {
   return unrelaxed1PDM;
 }
 
-// compute the unrelaxed 2PDM
 // Eq. 105/122
+/**
+ * @brief Return the 2-body unrelaxed (Pauli) density matrices
+ * 
+ * @param x optimal entangler parameters
+ * @return Unrelaxed 2-body density matrices
+ */
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getUnrelaxed2PDM(const std::vector<double> &x) const {
 
@@ -108,7 +118,12 @@ MC_VQE::getUnrelaxed2PDM(const std::vector<double> &x) const {
   return unrelaxed2PDM;
 }
 
-// compute the VQE multipliers
+/**
+ * @brief Return the Lagrange multipliers wrt to the VQE parameters
+ * 
+ * @param x optimal entangler parameters
+ * @return VQE Lagrange multipliers
+ */
 std::vector<Eigen::MatrixXd>
 MC_VQE::getVQEMultipliers(const std::vector<double> &x) const {
 
@@ -215,9 +230,20 @@ MC_VQE::getVQEMultipliers(const std::vector<double> &x) const {
 }
 
 // compute CP-SA-VQE 1PDM
+/**
+ * @brief Return 1-body density matrices wrt VQE parameters 
+ * 
+ * @param x optimal entangler parameters
+ * @param vqeMultipliers VQE Lagrange multipliers
+ * @return 1-body VQE density matrices
+ */
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getVQE1PDM(const std::vector<double> &x,
                    const std::vector<Eigen::MatrixXd> &vqeMultipliers) const {
+  /** 
+   * @param[in] x vector of optimized entangler parameters
+   * @param[in] vqeMultipliers VQE Lagrange multipliers
+   */
 
   // Eq. 128
   auto nParams = x.size();
@@ -263,7 +289,13 @@ MC_VQE::getVQE1PDM(const std::vector<double> &x,
   return vqe1PDM;
 }
 
-// compute CP-SA-VQE 2PDM
+/**
+ * @brief Return 2-body density matrices wrt VQE parameters 
+ * 
+ * @param x optimal entangler parameters
+ * @param vqeMultipliers VQE Lagrange multipliers
+ * @return 2-body VQE density matrices
+ */
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getVQE2PDM(const std::vector<double> &x,
                    const std::vector<Eigen::MatrixXd> &vqeMultipliers) const {
@@ -332,6 +364,13 @@ MC_VQE::getVQE2PDM(const std::vector<double> &x,
   return vqe2PDM;
 }
 
+/**
+ * @brief Return the state energy gradient wrt the state preparation angles
+ * 
+ * @param gateAngles CIS state preparation angles
+ * @param x optimal entangler parameters
+ * @return State energy gradient wrt the state preparation angles
+ */
 Eigen::MatrixXd
 MC_VQE::getStatePrepationAngleGradient(const Eigen::MatrixXd &gateAngles,
                                        const std::vector<double> &x) const {
@@ -399,7 +438,13 @@ MC_VQE::getStatePrepationAngleGradient(const Eigen::MatrixXd &gateAngles,
   return stateAngleGrad;
 }
 
-// compute multipliers w.r.t. contracted reference states
+/**
+ * @brief Return Lagrange multipliers wrt contracted reference (CIS) states
+ * 
+ * @param x optimal entangler parameters
+ * @param vqeMultipliers VQE Langrange multipliers
+ * @return CRS Lagrange multipliers 
+ */
 std::vector<Eigen::MatrixXd> MC_VQE::getCRSMultipliers(
     const std::vector<double> &x,
     const std::vector<Eigen::MatrixXd> &vqeMultipliers) const {
@@ -543,9 +588,15 @@ std::vector<Eigen::MatrixXd> MC_VQE::getCRSMultipliers(
 // compute CRS contribution to the relaxed DM
 // because we don't need to getObservable from string
 // we can have a single call for 1 and 2 PDMs
+/**
+ * @brief Return the CRS contribution to the density matrices
+ * 
+ * @param cpCRSMultipliers Lagrange multipliers wrt CRS (CIS) state preparation angles
+ * @return CRS density matrices
+ */
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getCRSDensityMatrices(
-    const std::vector<Eigen::MatrixXd> &cpCRSMultipliers) const {
+    std::vector<Eigen::MatrixXd> &cpCRSMultipliers) const {
 
   std::map<std::string, std::vector<Eigen::MatrixXd>> crsPDM;
   for (int mcState = 0; mcState < nStates; mcState++) {
@@ -655,6 +706,14 @@ MC_VQE::getCRSDensityMatrices(
   return crsPDM;
 }
 
+/**
+ * @brief Return the relaxed density matrices, i.e, the sum of individual DM contributions
+ * 
+ * @param unrelaxedDM Unrelaxed (Pauli) density matrices
+ * @param vqeDM Density matrices wrt state-averaged VQE parameters
+ * @param crsDM Density matrices wrt CRS/CIS state preparation angles
+ * @return std::map<std::string, std::vector<Eigen::MatrixXd>> 
+ */
 std::map<std::string, std::vector<Eigen::MatrixXd>>
 MC_VQE::getRelaxedDensityMatrices(
     std::map<std::string, std::vector<Eigen::MatrixXd>> &unrelaxedDM,
@@ -677,8 +736,14 @@ MC_VQE::getRelaxedDensityMatrices(
   return relaxedDM;
 }
 
+/**
+ * @brief Return the density matrices in the monomer basis
+ * 
+ * @param _DM Relaxed density matrices in the Pauli basis
+ * @return Monomer basis density matrices
+ */
 std::map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getDensityMatricesInMonomerBasis(
+MC_VQE::getMonomerBasisDensityMatrices(
     std::map<std::string, std::vector<Eigen::MatrixXd>> &_DM) const {
 
   // the 1PDM is straightforward, so I only do this for the 2PDM
@@ -751,8 +816,13 @@ MC_VQE::getDensityMatricesInMonomerBasis(
   return monomerBasisDM;
 }
 
-std::map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getMonomerDensityMatrices(
+/**
+ * @brief Return the 1-body interaction gradients in the monomer basis
+ * 
+ * @param _1PDM 1-body relaxed density matrices
+ * @return Monomer basis gradients
+ */
+std::map<std::string, std::vector<Eigen::MatrixXd>> MC_VQE::getMonomerGradient(
     std::map<std::string, std::vector<Eigen::MatrixXd>> &_1PDM) const {
 
   std::map<std::string, std::vector<Eigen::MatrixXd>> monomerGradients;
@@ -782,8 +852,14 @@ MC_VQE::getMonomerDensityMatrices(
   return monomerGradients;
 }
 
+/**
+ * @brief Return the gradients wrt 2-body interactions
+ * 
+ * @param _2PDM 2-body relaxed density matrices 
+ * @return Dimer interaction gradients
+ */
 std::map<std::string, std::vector<Eigen::MatrixXd>>
-MC_VQE::getDimerInteractionDensityMatrices(
+MC_VQE::getDimerInteractionGradient(
     std::map<std::string, std::vector<Eigen::MatrixXd>> &_2PDM) const {
 
   // Eq. 147
@@ -944,6 +1020,12 @@ MC_VQE::getDimerInteractionDensityMatrices(
 // here we contract the MC-VQE density matrices with the classical derivatives
 // vector<stateGradient>
 // stateGradients = vector<monomerGradient>
+/**
+ * @brief Return the gradient wrt nuclear displacement by contracting the relaxed MC-VQE DMs with the classical derivatives.
+ * 
+ * @param DM relaxed MC-VQE density matrices
+ * @return Nuclear gradients for all coordinates for all monomers and all states 
+ */
 std::vector<std::vector<Eigen::MatrixXd>> MC_VQE::getNuclearGradients(
     std::map<std::string, std::vector<Eigen::MatrixXd>> &DM) const {
 

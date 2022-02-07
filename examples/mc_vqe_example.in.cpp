@@ -212,7 +212,7 @@ int main(int argc, char **argv) {
                       {"interference", doInterference},
                       {"n-states", n_states},
                       {"energy-data-path", energy_data_path},
-                      {"response-data-path", response_data_path},
+                      //{"response-data-path", response_data_path},
                       {"cyclic", cyclic},
                       {"angstrom-to-au", angstrom2au},
                       {"debye-to-au", debye2au},

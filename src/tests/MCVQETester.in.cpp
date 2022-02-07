@@ -94,11 +94,6 @@ TEST(MCVQETester, checkSubspace) {
 
   auto accelerator = xacc::getAccelerator("qpp", hetMap);
 
-  // decorate accelerator
-  accelerator = xacc::getAcceleratorDecorator("hpc-virtualization", accelerator,
-                                              {{"n-virtual-qpus", 2}});
-  accelerator->updateConfiguration(hetMap);
-
   auto mc_vqe = xacc::getAlgorithm("mc-vqe");
   mc_vqe->initialize({{"accelerator", accelerator},
                       {"optimizer", optimizer},
@@ -143,11 +138,6 @@ TEST(MCVQETester, checkResponse) {
   hetMap.insert("exp-val-by-conjugate", true);
 
   auto accelerator = xacc::getAccelerator("qpp", hetMap);
-
-  // decorate accelerator
-  accelerator = xacc::getAcceleratorDecorator("hpc-virtualization", accelerator,
-                                              {{"n-virtual-qpus", 2}});
-  accelerator->updateConfiguration(hetMap);
 
   auto mc_vqe = xacc::getAlgorithm("mc-vqe");
   mc_vqe->initialize({{"accelerator", accelerator},

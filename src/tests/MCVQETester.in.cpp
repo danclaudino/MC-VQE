@@ -70,6 +70,8 @@ TEST(MCVQETester, checkMCVQE) {
               1e-4);
 }
 */
+
+/*
 TEST(MCVQETester, checkSubspace) {
 
   std::vector<std::string> arguments(argv + 1, argv + argc);
@@ -114,6 +116,7 @@ TEST(MCVQETester, checkSubspace) {
                            -0.0347927, -0.00799183,  0.0258266,   -0.0137459};
   EXPECT_NEAR(-0.14398, mc_vqe->execute(q, x)[0], 1e-3);
 }
+*/
 
 TEST(MCVQETester, checkResponse) {
 
@@ -139,6 +142,11 @@ TEST(MCVQETester, checkResponse) {
 
   auto accelerator = xacc::getAccelerator("qpp", hetMap);
 
+  // decorate accelerator
+  //accelerator = xacc::getAcceleratorDecorator("hpc-virtualization", accelerator,
+   //                                           {{"n-virtual-qpus", 2}});
+  //accelerator->updateConfiguration(hetMap);
+
   auto mc_vqe = xacc::getAlgorithm("mc-vqe");
   mc_vqe->initialize({{"accelerator", accelerator},
                       {"optimizer", optimizer},
@@ -159,6 +167,7 @@ TEST(MCVQETester, checkResponse) {
   std::vector<double> x = {-0.0863268, 0.131845};
   EXPECT_NEAR(-0.0858046, mc_vqe->execute(q, x)[0], 1e-3);
 }
+
 
 int main(int argc, char **argv) {
   xacc::Initialize(argc, argv);
